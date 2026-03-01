@@ -1,0 +1,20 @@
+# Local database
+*.db
+*.sqlite
+biometrk.db
+
+# Binaries
+/biometrk
+
+# Instruction files
+GEMINI.md
+
+# Personal data
+data/
+*.csv
+*.json
+!example_*.json
+
+# System files
+.DS_Store
+Thumbs.db
