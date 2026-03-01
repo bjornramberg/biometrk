@@ -347,6 +347,11 @@ func (m *model) View() string {
 	if m.err != nil {
 		s += fmt.Sprintf("\nError: %v\n", m.err)
 	}
+
+	s += "\n---\n"
+	s += "Disclaimer: For personal tracking only. Not medical advice.\n"
+	s += "Read more: https://github.com/bjornramberg/biometrk/\n"
+
 	return s
 }
 
