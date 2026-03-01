@@ -48,7 +48,7 @@ go build -o biometrk ./cmd/biometrk
 
 ## Disclaimer
 
-**Biometrk is for personal health tracking and analysis purposes only. It is NOT intended to provide medical advice, diagnosis, or treatment, and it should NOT replace professional consultations with a physician or healthcare provider. All use and interpretation of data are at the user's own responsibility.**
+*Biometrk is for personal health tracking and analysis purposes only. It is NOT intended to provide medical advice, diagnosis, or treatment, and it should NOT replace professional consultations with a physician or healthcare provider. All use and interpretation of data are at the user's own responsibility.*
 
 ## License
 
