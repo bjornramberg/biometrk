@@ -211,6 +211,29 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "t":
+			// Toggle Test Mode (In-Mem)
+			if m.db.IsEphemeral {
+				// Exit test mode (go back to real DB - simple reload)
+				d, err := db.Open()
+				if err != nil {
+					m.err = err
+				} else {
+					m.db.Close()
+					m.db = d
+					m.loadData()
+				}
+			} else {
+				// Enter test mode
+				d, err := db.OpenInMem()
+				if err != nil {
+					m.err = err
+				} else {
+					d.SeedDummyData()
+					m.db = d
+					m.loadData()
+				}
+			}
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -269,7 +292,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) View() string {
-	s := "Biometrk - Health Tracker\n\n"
+	title := "Biometrk - Health Tracker"
+	if m.db.IsEphemeral {
+		title += " [TEST MODE]"
+	}
+	s := title + "\n\n"
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -314,7 +341,7 @@ func (m *model) View() string {
 		s += fmt.Sprintf("\nEnter %s: %s\n", prompt, m.input.View())
 		s += "(press Esc to cancel)\n"
 	} else {
-		s += "\nPress Enter to toggle/edit. Press q to quit.\n"
+		s += "\nPress Enter to toggle/edit. Press 't' for Test Mode. Press q to quit.\n"
 	}
 
 	if m.err != nil {
