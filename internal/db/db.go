@@ -139,3 +139,49 @@ func (d *DB) DeleteMetric(metricType, date string) error {
 	_, err := d.Conn.Exec(query, metricType, date)
 	return err
 }
+
+type DBStats struct {
+	TotalEntries int
+	FirstEntry   string
+	LastEntry    string
+	MetricCounts map[string]int
+}
+
+func (d *DB) GetStats() (*DBStats, error) {
+	stats := &DBStats{
+		MetricCounts: make(map[string]int),
+	}
+
+	err := d.Conn.QueryRow("SELECT COUNT(*) FROM metrics").Scan(&stats.TotalEntries)
+	if err != nil {
+		return nil, err
+	}
+
+	if stats.TotalEntries > 0 {
+		err = d.Conn.QueryRow("SELECT MIN(date), MAX(date) FROM metrics").Scan(&stats.FirstEntry, &stats.LastEntry)
+		if err != nil {
+			return nil, err
+		}
+
+		rows, err := d.Conn.Query("SELECT metric_type, COUNT(*) FROM metrics GROUP BY metric_type")
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var mType string
+			var count int
+			if err := rows.Scan(&mType, &count); err == nil {
+				stats.MetricCounts[mType] = count
+			}
+		}
+	}
+
+	return stats, nil
+}
+
+func (d *DB) Reset() error {
+	_, err := d.Conn.Exec("DELETE FROM metrics")
+	return err
+}

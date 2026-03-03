@@ -30,6 +30,13 @@ type metricDefinition struct {
 	options     []string // For typeEnum
 }
 
+type viewMode int
+
+const (
+	modeTracker viewMode = iota
+	modeDatabase
+)
+
 type model struct {
 	db          *db.DB
 	metrics     []metricDefinition
@@ -41,6 +48,8 @@ type model struct {
 	isInputting bool
 	inputStep   int
 	tempValues  []string
+	mode        viewMode
+	dbStats     *db.DBStats
 }
 
 func initialModel(d *db.DB) *model {
@@ -210,7 +219,33 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			if m.mode == modeDatabase {
+				m.mode = modeTracker
+				return m, nil
+			}
 			return m, tea.Quit
+		case "d":
+			if m.mode == modeTracker {
+				m.mode = modeDatabase
+				stats, err := m.db.GetStats()
+				if err != nil {
+					m.err = err
+				} else {
+					m.dbStats = stats
+				}
+			} else {
+				m.mode = modeTracker
+			}
+		case "r":
+			if m.mode == modeDatabase {
+				if err := m.db.Reset(); err != nil {
+					m.err = err
+				} else {
+					m.loadData()
+					stats, _ := m.db.GetStats()
+					m.dbStats = stats
+				}
+			}
 		case "t":
 			// Toggle Test Mode (In-Mem)
 			if m.db.IsEphemeral {
@@ -300,6 +335,25 @@ func (m *model) View() string {
 	
 	s := ascii + "\n\n"
 	
+	if m.mode == modeDatabase {
+		s += "Database Management\n\n"
+		if m.dbStats == nil {
+			s += "Loading stats...\n"
+		} else {
+			s += fmt.Sprintf("Total Entries: %d\n", m.dbStats.TotalEntries)
+			if m.dbStats.TotalEntries > 0 {
+				s += fmt.Sprintf("First Entry:   %s\n", m.dbStats.FirstEntry)
+				s += fmt.Sprintf("Last Entry:    %s\n", m.dbStats.LastEntry)
+				s += "\nBreakdown:\n"
+				for mType, count := range m.dbStats.MetricCounts {
+					s += fmt.Sprintf(" - %-15s: %d\n", mType, count)
+				}
+			}
+		}
+		s += "\nPress 'r' to RESET (DELETE ALL DATA). Press 'd' or 'q' to return.\n"
+		return s
+	}
+
 	title := "Biometrk - Health Tracker"
 	if m.db.IsEphemeral {
 		title += " [TEST MODE]"
@@ -349,7 +403,7 @@ func (m *model) View() string {
 		s += fmt.Sprintf("\nEnter %s: %s\n", prompt, m.input.View())
 		s += "(press Esc to cancel)\n"
 	} else {
-		s += "\nPress Enter to toggle/edit. Press 't' for Test Mode. Press q to quit.\n"
+		s += "\nPress Enter to toggle/edit. Press 't' for Test Mode. Press 'd' for Stats. Press q to quit.\n"
 	}
 
 	if m.err != nil {
