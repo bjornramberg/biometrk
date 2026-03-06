@@ -185,3 +185,58 @@ func (d *DB) Reset() error {
 	_, err := d.Conn.Exec("DELETE FROM metrics")
 	return err
 }
+
+func (d *DB) GetStreak() (int, error) {
+	query := `SELECT DISTINCT date FROM metrics ORDER BY date DESC`
+	rows, err := d.Conn.Query(query)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	streak := 0
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	yesterday := today.AddDate(0, 0, -1)
+	
+	checkDate := today
+	first := true
+
+	for rows.Next() {
+		var dateStr string
+		if err := rows.Scan(&dateStr); err != nil {
+			return streak, err
+		}
+
+		date, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			continue
+		}
+
+		if first {
+			first = false
+			if date.Equal(today) {
+				streak++
+				checkDate = yesterday
+				continue
+			} else if date.Equal(yesterday) {
+				// Haven't logged today yet, but logged yesterday. 
+				// Streak stays alive.
+				streak++
+				checkDate = yesterday.AddDate(0, 0, -1)
+				continue
+			}
+		}
+
+		if date.Equal(checkDate) {
+			streak++
+			checkDate = checkDate.AddDate(0, 0, -1)
+		} else if date.After(checkDate) {
+			continue
+		} else {
+			break
+		}
+	}
+
+	return streak, nil
+}

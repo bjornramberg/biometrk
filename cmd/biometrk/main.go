@@ -36,7 +36,6 @@ const (
 	modeTracker viewMode = iota
 	modeDatabase
 )
-
 type model struct {
 	db          *db.DB
 	metrics     []metricDefinition
@@ -50,10 +49,12 @@ type model struct {
 	tempValues  []string
 	mode        viewMode
 	dbStats     *db.DBStats
+	streak      int
 }
 
 func initialModel(d *db.DB) *model {
 	now := time.Now()
+	// Normalize to midnight for consistent comparisons
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	ti := textinput.New()
@@ -62,6 +63,8 @@ func initialModel(d *db.DB) *model {
 	m := &model{
 		db: d,
 		metrics: []metricDefinition{
+// ... (rest of metrics definition)
+
 			{
 				id:      "bp",
 				label:   "Blood Pressure",
@@ -148,6 +151,14 @@ func (m *model) loadData() {
 			m.values[mType] = val
 		}
 	}
+
+	// Fetch streak
+	s, err := m.db.GetStreak()
+	if err != nil {
+		m.err = err
+	} else {
+		m.streak = s
+	}
 }
 
 func (m *model) Init() tea.Cmd {
@@ -201,6 +212,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.values[metric.id] = finalVal
 				m.db.DeleteMetric(metric.id, dateStr)
 				m.db.LogMetric(metric.id, finalVal, dateStr)
+				m.loadData() // Refresh streak and values
 				return m, nil
 			case "esc":
 				m.isInputting = false
@@ -300,6 +312,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.values[metric.id] = "true"
 					m.db.LogMetric(metric.id, "true", dateStr)
 				}
+				m.loadData()
 			case typeInput, typeRating:
 				m.isInputting = true
 				m.input.Placeholder = metric.placeholder
@@ -320,6 +333,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.values[metric.id] = next
 				m.db.DeleteMetric(metric.id, dateStr)
 				m.db.LogMetric(metric.id, next, dateStr)
+				m.loadData()
 			}
 		}
 	}
@@ -366,7 +380,7 @@ func (m *model) View() string {
 	if m.currentDate.Equal(today) {
 		dateStr += " (Today)"
 	}
-	s += fmt.Sprintf("Date: %s\n", dateStr)
+	s += fmt.Sprintf("Date: %s    Streak: %d days 🔥\n", dateStr, m.streak)
 	s += "Use Left/Right to navigate days.\n\n"
 
 	for i, metric := range m.metrics {
