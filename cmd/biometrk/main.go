@@ -354,10 +354,11 @@ func (m *model) View() string {
 		if m.dbStats == nil {
 			s += "Loading stats...\n"
 		} else {
-			s += fmt.Sprintf("Total Entries: %d\n", m.dbStats.TotalEntries)
+			s += fmt.Sprintf("Total Entries:  %d\n", m.dbStats.TotalEntries)
 			if m.dbStats.TotalEntries > 0 {
-				s += fmt.Sprintf("First Entry:   %s\n", m.dbStats.FirstEntry)
-				s += fmt.Sprintf("Last Entry:    %s\n", m.dbStats.LastEntry)
+				s += fmt.Sprintf("First Entry:    %s\n", m.dbStats.FirstEntry)
+				s += fmt.Sprintf("Last Entry:     %s\n", m.dbStats.LastEntry)
+				s += fmt.Sprintf("Longest Streak: %d days 🏆\n", m.dbStats.LongestStreak)
 				s += "\nBreakdown:\n"
 				for mType, count := range m.dbStats.MetricCounts {
 					s += fmt.Sprintf(" - %-15s: %d\n", mType, count)
@@ -380,7 +381,7 @@ func (m *model) View() string {
 	if m.currentDate.Equal(today) {
 		dateStr += " (Today)"
 	}
-	s += fmt.Sprintf("Date: %s    Streak: %d days 🔥\n", dateStr, m.streak)
+	s += fmt.Sprintf("Date: %-20s Streak: %d days, keep going! 🔥\n", dateStr, m.streak)
 	s += "Use Left/Right to navigate days.\n\n"
 
 	for i, metric := range m.metrics {

@@ -141,10 +141,11 @@ func (d *DB) DeleteMetric(metricType, date string) error {
 }
 
 type DBStats struct {
-	TotalEntries int
-	FirstEntry   string
-	LastEntry    string
-	MetricCounts map[string]int
+	TotalEntries  int
+	FirstEntry    string
+	LastEntry     string
+	MetricCounts  map[string]int
+	LongestStreak int
 }
 
 func (d *DB) GetStats() (*DBStats, error) {
@@ -176,9 +177,57 @@ func (d *DB) GetStats() (*DBStats, error) {
 				stats.MetricCounts[mType] = count
 			}
 		}
+
+		longest, _ := d.CalculateLongestStreak()
+		stats.LongestStreak = longest
 	}
 
 	return stats, nil
+}
+
+func (d *DB) CalculateLongestStreak() (int, error) {
+	query := `SELECT DISTINCT date FROM metrics ORDER BY date ASC`
+	rows, err := d.Conn.Query(query)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	maxStreak := 0
+	currentStreak := 0
+	var lastDate time.Time
+
+	for rows.Next() {
+		var dateStr string
+		if err := rows.Scan(&dateStr); err != nil {
+			return maxStreak, err
+		}
+
+		date, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			continue
+		}
+
+		if currentStreak == 0 {
+			currentStreak = 1
+		} else {
+			if date.Equal(lastDate.AddDate(0, 0, 1)) {
+				currentStreak++
+			} else {
+				if currentStreak > maxStreak {
+					maxStreak = currentStreak
+				}
+				currentStreak = 1
+			}
+		}
+		lastDate = date
+	}
+
+	if currentStreak > maxStreak {
+		maxStreak = currentStreak
+	}
+
+	return maxStreak, nil
 }
 
 func (d *DB) Reset() error {
