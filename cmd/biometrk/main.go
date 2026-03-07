@@ -438,7 +438,7 @@ func (m *model) View() string {
 		
 		// Enforce stable size for the main box
 		boxWidth  = m.width - 4
-		boxHeight = m.height - 14 // Increased offset to prevent cutoff
+		boxHeight = m.height - 12 // Reduced offset since header is more compact
 		
 		boxStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
@@ -451,32 +451,43 @@ func (m *model) View() string {
 	if boxWidth < 40 { boxWidth = 40 }
 	if boxHeight < 10 { boxHeight = 10 }
 
-	// 1. PERSISTENT HEADER (LOGO)
+	// 1. PERSISTENT HEADER (LOGO + INFO BOX)
 	ascii := ` ______     __     ______     __    __     ______     ______   ______     __  __    
 /\  == \   /\ \   /\  __ \   /\ "-./  \   /\  ___\   /\__  _\ /\  == \   /\ \/ /    
 \ \  __<   \ \ \  \ \ \/\ \  \ \ \-./\ \  \ \  __\   \/_/\ \/ \ \  __<   \ \  _"-.  
  \ \_____\  \ \_\  \ \_____\  \ \_\ \ \_\  \ \_____\    \ \_\  \ \_\ \_\  \ \_\ \_\ 
   \/_____/   \/_/   \/_____/   \/_/  \/_/   \/_____/     \/_/   \/_/ /_/   \/_/\/_/`
+	ascii = strings.TrimPrefix(ascii, "\n")
 
-	header := headerStyle.Render(ascii) + "\n\n"
-
-	// 2. SUB-HEADER (Date / Streak)
-	title := titleStyle.Render("Biometrk")
-	if m.db.IsEphemeral {
-		title += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" [TEST MODE]")
-	}
-	
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	dateStr := m.currentDate.Format("2006-01-02")
 	if m.currentDate.Equal(today) {
 		dateStr += " (Today)"
 	}
-	
-	subHeader := title + dateStyle.Render("Date: "+dateStr) + streakStyle.Render(fmt.Sprintf("Streak: %d days 🔥", m.streak)) + "\n"
-	subHeader += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Use Left/Right to navigate days.") + "\n"
 
-	// 3. MAIN CONTENT (Boxed)
+	infoBoxStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("63")).
+			Padding(0, 1).
+			Width(35)
+
+	title := titleStyle.Render("Biometrk")
+	if m.db.IsEphemeral {
+		title += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" [TEST MODE]")
+	}
+
+	infoContent := title + "\n"
+	infoContent += fmt.Sprintf("Date: %s\n", dateStyle.Render(dateStr))
+	infoContent += fmt.Sprintf("Streak: %s\n", streakStyle.Render(fmt.Sprintf("%d days 🔥", m.streak)))
+	infoContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true).Render("Navigate: ← / → keys")
+
+	infoBox := infoBoxStyle.Render(infoContent)
+	logo := headerStyle.Render(ascii)
+
+	header := lipgloss.JoinHorizontal(lipgloss.Top, logo, "  ", infoBox) + "\n\n"
+
+	// 2. MAIN CONTENT (Boxed)
 	var content string
 
 	switch m.mode {
@@ -615,7 +626,7 @@ func (m *model) View() string {
 	disclaimer := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("\nDisclaimer: For personal tracking only. Not medical advice. Read more: https://github.com/bjornramberg/biometrk/")
 
 	// Assemble
-	return header + subHeader + boxStyle.Render(content) + menuBar + disclaimer
+	return header + boxStyle.Render(content) + menuBar + disclaimer
 }
 
 func main() {
