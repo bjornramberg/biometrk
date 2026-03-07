@@ -442,14 +442,6 @@ func (m *model) View() string {
 				BorderForeground(lipgloss.Color("62"))
 	)
 
-	ascii := ` ______     __     ______     __    __     ______     ______   ______     __  __    
-/\  == \   /\ \   /\  __ \   /\ "-./  \   /\  ___\   /\__  _\ /\  == \   /\ \/ /    
-\ \  __<   \ \ \  \ \ \/\ \  \ \ \-./\ \  \ \  __\   \/_/\ \/ \ \  __<   \ \  _"-.  
- \ \_____\  \ \_\  \ \_____\  \ \_\ \ \_\  \ \_____\    \ \_\  \ \_\ \_\  \ \_\ \_\ 
-  \/_____/   \/_/   \/_____/   \/_/  \/_/   \/_____/     \/_/   \/_/ /_/   \/_/\/_/`
-
-	s := headerStyle.Render(ascii) + "\n\n"
-
 	if m.mode == modeDatabase {
 		content := "Database Management\n\n"
 		if m.dbStats == nil {
@@ -467,8 +459,7 @@ func (m *model) View() string {
 			}
 		}
 		content += "\nPress 'r' to RESET (DELETE ALL DATA). Press 'd' or 'q' to return."
-		s += boxStyle.Render(content)
-		return s
+		return boxStyle.Render(content)
 	}
 
 	if m.mode == modeAnalytics {
@@ -486,25 +477,36 @@ func (m *model) View() string {
 			}
 
 			graphContent := fmt.Sprintf("%s:\n", metric.label)
+			graphWidth := 40
 			g := asciigraph.Plot(data,
 				asciigraph.Height(5),
-				asciigraph.Width(45),
+				asciigraph.Width(graphWidth),
 				asciigraph.Precision(1))
 			graphContent += g
 
-			// Add Time Axis
+			// Improved Time Axis
 			startD := time.Now().AddDate(0, 0, -m.analyticsInterval+1).Format("01-02")
+			midD := time.Now().AddDate(0, 0, -(m.analyticsInterval / 2)).Format("01-02")
 			endD := time.Now().Format("01-02")
-			// Create axis string: "MM-DD . . . . MM-DD"
-			padding := 45 - len(startD) - len(endD) - 2
-			axis := "\n  " + startD + strings.Repeat(" ", padding) + endD
+
+			// Approximate label width from asciigraph is ~7 chars
+			labelWidth := 7
+			totalGraphWidth := graphWidth + labelWidth
+			
+			padding := (totalGraphWidth - len(startD) - len(midD) - len(endD)) / 2
+			if padding < 1 { padding = 1 }
+			
+			axis := "\n" + startD + strings.Repeat(" ", padding) + midD + strings.Repeat(" ", padding) + endD
 			graphContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(axis)
 
-			graphs = append(graphs, lipgloss.NewStyle().Padding(1).Render(graphContent))
+			graphs = append(graphs, lipgloss.NewStyle().
+				MarginRight(4).
+				Render(graphContent))
 		}
 
 		// Arrange graphs in columns if width allows
-		if m.width > 110 {
+		var finalContent string
+		if m.width > 100 {
 			var rows []string
 			for i := 0; i < len(graphs); i += 2 {
 				if i+1 < len(graphs) {
@@ -513,15 +515,15 @@ func (m *model) View() string {
 					rows = append(rows, graphs[i])
 				}
 			}
-			content += lipgloss.JoinVertical(lipgloss.Left, rows...)
+			finalContent = lipgloss.JoinVertical(lipgloss.Left, rows...)
 		} else {
-			content += lipgloss.JoinVertical(lipgloss.Left, graphs...)
+			finalContent = lipgloss.JoinVertical(lipgloss.Left, graphs...)
 		}
 
-		content += fmt.Sprintf("\nIntervals: [1] 7d  [2] 30d  [3] 90d\n")
+		content += finalContent
+		content += fmt.Sprintf("\n\nIntervals: [1] 7d  [2] 30d  [3] 90d\n")
 		content += "Press 'a' or 'q' to return."
-		s += boxStyle.Render(content)
-		return s
+		return boxStyle.Render(content)
 	}
 
 	if m.mode == modeInsights {
@@ -547,9 +549,17 @@ func (m *model) View() string {
 
 		content += fmt.Sprintf("\nIntervals: [1] 7d  [2] 30d  [3] 90d\n")
 		content += "Press 'i' or 'q' to return."
-		s += boxStyle.Render(content)
-		return s
+		return boxStyle.Render(content)
 	}
+
+	// Main Tracker View
+	ascii := ` ______     __     ______     __    __     ______     ______   ______     __  __    
+/\  == \   /\ \   /\  __ \   /\ "-./  \   /\  ___\   /\__  _\ /\  == \   /\ \/ /    
+\ \  __<   \ \ \  \ \ \/\ \  \ \ \-./\ \  \ \  __\   \/_/\ \/ \ \  __<   \ \  _"-.  
+ \ \_____\  \ \_\  \ \_____\  \ \_\ \ \_\  \ \_____\    \ \_\  \ \_\ \_\  \ \_\ \_\ 
+  \/_____/   \/_/   \/_____/   \/_/  \/_/   \/_____/     \/_/   \/_/ /_/   \/_/\/_/`
+
+	s := headerStyle.Render(ascii) + "\n\n"
 
 	title := titleStyle.Render("Biometrk - Health Tracker")
 	if m.db.IsEphemeral {
