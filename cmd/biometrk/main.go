@@ -327,6 +327,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.dbStats = stats
 				}
 			}
+		case "b":
+			if m.mode == modeDatabase {
+				_, err := m.db.Backup()
+				if err != nil {
+					m.err = err
+				} else {
+					stats, _ := m.db.GetStats()
+					m.dbStats = stats
+				}
+			}
 		case "t":
 			// Toggle Test Mode (In-Mem)
 			if m.db.IsEphemeral {
@@ -495,17 +505,21 @@ func (m *model) View() string {
 		if m.dbStats == nil {
 			content += "Loading stats...\n"
 		} else {
+			sizeStr := fmt.Sprintf("%.2f KB", float64(m.dbStats.Size)/1024)
+			if m.dbStats.Size > 1024*1024 {
+				sizeStr = fmt.Sprintf("%.2f MB", float64(m.dbStats.Size)/(1024*1024))
+			}
+
+			content += fmt.Sprintf("Location:       %s\n", m.dbStats.Path)
+			content += fmt.Sprintf("File Size:      %s\n", sizeStr)
 			content += fmt.Sprintf("Total Entries:  %d\n", m.dbStats.TotalEntries)
+
 			if m.dbStats.TotalEntries > 0 {
-				content += fmt.Sprintf("First Entry:    %s\n", m.dbStats.FirstEntry)
-				content += fmt.Sprintf("Last Entry:     %s\n", m.dbStats.LastEntry)
+				content += fmt.Sprintf("Date Range:     %s to %s\n", m.dbStats.FirstEntry, m.dbStats.LastEntry)
 				content += fmt.Sprintf("Longest Streak: %d days 🏆\n", m.dbStats.LongestStreak)
-				content += "\nBreakdown:\n"
-				for mType, count := range m.dbStats.MetricCounts {
-					content += fmt.Sprintf(" • %-15s: %d\n", mType, count)
-				}
 			}
 		}
+		content += "\nPress 'b' to BACKUP. Press 'r' to RESET. Press 'd' or 'q' to return."
 
 	case modeAnalytics:
 		content = fmt.Sprintf("Analytics - Last %d Days\n\n", m.analyticsInterval)
@@ -617,7 +631,8 @@ func (m *model) View() string {
 		menuItems = append(menuItems, keyStyle.Render("1-3") + " interval")
 	}
 	if m.mode == modeDatabase {
-		menuItems = append(menuItems, keyStyle.Render("r") + " reset")
+		menuItems = append(menuItems, keyStyle.Render("b")+" backup")
+		menuItems = append(menuItems, keyStyle.Render("r")+" reset")
 	}
 
 	menuBar := menuStyle.Render(strings.Join(menuItems, "  •  "))

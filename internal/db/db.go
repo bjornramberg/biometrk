@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -87,7 +89,6 @@ func (d *DB) SeedDummyData() error {
 		d.LogMetric("bp", fmt.Sprintf("%d/%d - %d", sys, dia, pulse), date)
 
 		// Alcohol: 2-3 days consecutive, twice in dataset
-		// Simplified: specific days
 		if (i >= 5 && i <= 7) || (i >= 15 && i <= 16) {
 			d.LogMetric("alcohol", "true", date)
 		}
@@ -149,11 +150,23 @@ type DBStats struct {
 	LastEntry     string
 	MetricCounts  map[string]int
 	LongestStreak int
+	Path          string
+	Size          int64
 }
 
 func (d *DB) GetStats() (*DBStats, error) {
 	stats := &DBStats{
 		MetricCounts: make(map[string]int),
+		Path:         "biometrk.db",
+	}
+
+	if !d.IsEphemeral {
+		fi, err := os.Stat(stats.Path)
+		if err == nil {
+			stats.Size = fi.Size()
+		}
+	} else {
+		stats.Path = ":memory:"
 	}
 
 	err := d.Conn.QueryRow("SELECT COUNT(*) FROM metrics").Scan(&stats.TotalEntries)
@@ -165,20 +178,6 @@ func (d *DB) GetStats() (*DBStats, error) {
 		err = d.Conn.QueryRow("SELECT MIN(date), MAX(date) FROM metrics").Scan(&stats.FirstEntry, &stats.LastEntry)
 		if err != nil {
 			return nil, err
-		}
-
-		rows, err := d.Conn.Query("SELECT metric_type, COUNT(*) FROM metrics GROUP BY metric_type")
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var mType string
-			var count int
-			if err := rows.Scan(&mType, &count); err == nil {
-				stats.MetricCounts[mType] = count
-			}
 		}
 
 		longest, _ := d.CalculateLongestStreak()
@@ -272,8 +271,6 @@ func (d *DB) GetStreak() (int, error) {
 				checkDate = yesterday
 				continue
 			} else if date.Equal(yesterday) {
-				// Haven't logged today yet, but logged yesterday. 
-				// Streak stays alive.
 				streak++
 				checkDate = yesterday.AddDate(0, 0, -1)
 				continue
@@ -293,58 +290,36 @@ func (d *DB) GetStreak() (int, error) {
 	return streak, nil
 }
 
+func (d *DB) Backup() (string, error) {
+	if d.IsEphemeral {
+		return "", fmt.Errorf("cannot backup in-memory database")
+	}
+
+	backupDir := "backups"
+	if _, err := os.Stat(backupDir); os.IsNotExist(err) {
+		os.Mkdir(backupDir, 0755)
+	}
+
+	timestamp := time.Now().Format("20060102-150405")
+	backupPath := filepath.Join(backupDir, fmt.Sprintf("biometrk-backup-%s.db", timestamp))
+
+	input, err := os.ReadFile("biometrk.db")
+	if err != nil {
+		return "", err
+	}
+
+	err = os.WriteFile(backupPath, input, 0644)
+	if err != nil {
+		return "", err
+	}
+
+	return backupPath, nil
+}
+
 type Insight struct {
 	Text        string
 	Correlation float64
 	IsLagged    bool
-}
-
-func (d *DB) GetLeadLagInsights(days int) ([]Insight, error) {
-	data, err := d.GetMetricDataInRange(days + 1)
-	if err != nil {
-		return nil, err
-	}
-
-	metrics := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel"}
-	labels := map[string]string{
-		"bp":        "Blood Pressure",
-		"alcohol":   "Alcohol Intake",
-		"hydration": "Hydration",
-		"sleep":     "Sleep",
-		"training":  "Training",
-		"stress":    "Stress",
-		"feel":      "Overall Feel",
-	}
-
-	var insights []Insight
-
-	for _, m1 := range metrics {
-		for _, m2 := range metrics {
-			d1 := data[m1]
-			d2 := data[m2]
-
-			if len(d1) < 4 || len(d2) < 4 {
-				continue
-			}
-
-			// Shift d1 to represent "Yesterday"
-			// Yesterday's d1 vs Today's d2
-			yesterdayD1 := d1[:len(d1)-1]
-			todayD2 := d2[1:]
-
-			r := calculatePearson(yesterdayD1, todayD2)
-
-			if r > 0.4 || r < -0.4 {
-				text := fmt.Sprintf("Yesterday's %s shows a correlation with today's %s.", labels[m1], labels[m2])
-				if r > 0.7 {
-					text = fmt.Sprintf("Yesterday's %s strongly impacts how today's %s turns out.", labels[m1], labels[m2])
-				}
-				insights = append(insights, Insight{Text: text, Correlation: r, IsLagged: true})
-			}
-		}
-	}
-
-	return insights, nil
 }
 
 func (d *DB) GetInsights(days int) ([]Insight, error) {
@@ -366,7 +341,6 @@ func (d *DB) GetInsights(days int) ([]Insight, error) {
 
 	var insights []Insight
 
-	// Compare pairs
 	for i := 0; i < len(metrics); i++ {
 		for j := i + 1; j < len(metrics); j++ {
 			m1, m2 := metrics[i], metrics[j]
@@ -378,7 +352,6 @@ func (d *DB) GetInsights(days int) ([]Insight, error) {
 
 			r := calculatePearson(d1, d2)
 			
-			// Only report "Strong" or "Moderate" correlations (|r| > 0.4)
 			if r > 0.4 || r < -0.4 {
 				text := generateInsightText(labels[m1], labels[m2], r)
 				insights = append(insights, Insight{Text: text, Correlation: r})
@@ -426,7 +399,6 @@ func generateInsightText(l1, l2 string, r float64) string {
 		impact = "move in opposite directions"
 	}
 
-	// Specific phrasing for common pairs
 	if (l1 == "Training" || l2 == "Training") && r > 0.4 {
 		return fmt.Sprintf("Training consistently correlates with a better %s.", strings.ReplaceAll(l1+l2, "Training", ""))
 	}
@@ -437,10 +409,55 @@ func generateInsightText(l1, l2 string, r float64) string {
 	return fmt.Sprintf("There is %s %s correlation between %s and %s (%s).", strength, direction, l1, l2, impact)
 }
 
+func (d *DB) GetLeadLagInsights(days int) ([]Insight, error) {
+	data, err := d.GetMetricDataInRange(days + 1)
+	if err != nil {
+		return nil, err
+	}
+
+	metrics := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel"}
+	labels := map[string]string{
+		"bp":        "Blood Pressure",
+		"alcohol":   "Alcohol Intake",
+		"hydration": "Hydration",
+		"sleep":     "Sleep",
+		"training":  "Training",
+		"stress":    "Stress",
+		"feel":      "Overall Feel",
+	}
+
+	var insights []Insight
+
+	for _, m1 := range metrics {
+		for _, m2 := range metrics {
+			d1 := data[m1]
+			d2 := data[m2]
+
+			if len(d1) < 4 || len(d2) < 4 {
+				continue
+			}
+
+			yesterdayD1 := d1[:len(d1)-1]
+			todayD2 := d2[1:]
+
+			r := calculatePearson(yesterdayD1, todayD2)
+
+			if r > 0.4 || r < -0.4 {
+				text := fmt.Sprintf("Yesterday's %s shows a correlation with today's %s.", labels[m1], labels[m2])
+				if r > 0.7 {
+					text = fmt.Sprintf("Yesterday's %s strongly impacts how today's %s turns out.", labels[m1], labels[m2])
+				}
+				insights = append(insights, Insight{Text: text, Correlation: r, IsLagged: true})
+			}
+		}
+	}
+
+	return insights, nil
+}
+
 func (d *DB) GetMetricDataInRange(days int) (map[string][]float64, error) {
 	data := make(map[string][]float64)
 	
-	// Initialize all known metrics with empty slices to ensure we have a sequence for each
 	metricsList := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel"}
 	for _, m := range metricsList {
 		data[m] = make([]float64, 0, days)
@@ -456,7 +473,6 @@ func (d *DB) GetMetricDataInRange(days int) (map[string][]float64, error) {
 	}
 	defer rows.Close()
 
-	// Temporary map to store values by date and metric to handle gaps
 	tempData := make(map[string]map[string]float64)
 	for rows.Next() {
 		var dStr, mType, valStr string
@@ -465,7 +481,6 @@ func (d *DB) GetMetricDataInRange(days int) (map[string][]float64, error) {
 				tempData[dStr] = make(map[string]float64)
 			}
 
-			// Parse value
 			var val float64
 			if mType == "bp" {
 				parts := strings.Split(valStr, "/")
@@ -498,7 +513,6 @@ func (d *DB) GetMetricDataInRange(days int) (map[string][]float64, error) {
 		}
 	}
 
-	// Fill in the data sequences for all metrics
 	for i := 0; i < days; i++ {
 		dStr := time.Now().AddDate(0, 0, -days+1+i).Format("2006-01-02")
 		dayMetrics := tempData[dStr]
@@ -516,4 +530,3 @@ func (d *DB) GetMetricDataInRange(days int) (map[string][]float64, error) {
 
 	return data, nil
 }
-
