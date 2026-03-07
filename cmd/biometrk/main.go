@@ -414,8 +414,7 @@ func (m *model) View() string {
 	var (
 		headerStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("205")).
-				Bold(true).
-				MarginBottom(1)
+				Bold(true)
 		titleStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#FAFAFA")).
 				Background(lipgloss.Color("#7D56F4")).
@@ -439,7 +438,7 @@ func (m *model) View() string {
 		
 		// Enforce stable size for the main box
 		boxWidth  = m.width - 4
-		boxHeight = m.height - 12
+		boxHeight = m.height - 14 // Increased offset to prevent cutoff
 		
 		boxStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
