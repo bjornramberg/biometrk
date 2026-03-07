@@ -479,7 +479,7 @@ func (d *DB) GetMetricDataInRange(days int) (map[string][]float64, error) {
 				if len(parts) == 2 {
 					h, _ := strconv.ParseFloat(parts[0], 64)
 					m, _ := strconv.ParseFloat(parts[1], 64)
-					val = h*60 + m
+					val = h + (m / 60.0)
 				}
 			} else if valStr == "true" {
 				val = 1

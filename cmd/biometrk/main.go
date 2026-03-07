@@ -491,13 +491,24 @@ func (m *model) View() string {
 					data = []float64{0, 0}
 				}
 			}
+graphContent := fmt.Sprintf("%s:\n", metric.label)
+isBinary := metric.mType == typeToggle || metric.mType == typeEnum
 
-			graphContent := fmt.Sprintf("%s:\n", metric.label)
-			g := asciigraph.Plot(data,
-				asciigraph.Height(5),
-				asciigraph.Width(chartWidth),
-				asciigraph.Precision(1))
-			graphContent += g
+g := asciigraph.Plot(data,
+	asciigraph.Height(5),
+	asciigraph.Width(chartWidth),
+	asciigraph.Precision(1))
+
+if isBinary {
+	g = strings.ReplaceAll(g, " 1.0", " Yes")
+	g = strings.ReplaceAll(g, " 0.8", "    ")
+	g = strings.ReplaceAll(g, " 0.6", "    ")
+	g = strings.ReplaceAll(g, " 0.4", "    ")
+	g = strings.ReplaceAll(g, " 0.2", "    ")
+	g = strings.ReplaceAll(g, " 0.0", "  No")
+}
+
+graphContent += g
 
 			// Dynamic Time Axis
 			startD := time.Now().AddDate(0, 0, -m.analyticsInterval+1).Format("01-02")
