@@ -668,13 +668,13 @@ func (m *model) View() string {
 	if m.mode == modeDatabase { menuItems = append(menuItems, keyStyle.Render("b")+" backup", keyStyle.Render("R")+" restore", keyStyle.Render("e")+" csv", keyStyle.Render("m")+" md", keyStyle.Render("r")+" reset") }
 	menuBar := menuStyle.Render(strings.Join(menuItems, "  •  "))
 
-	disclaimer := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("\nDisclaimer: For personal tracking only. Not medical advice. Read more: https://github.com/bjornramberg/biometrk/")
+	disclaimer := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Disclaimer: For personal tracking only. Not medical advice. Read more: https://github.com/bjornramberg/biometrk/")
 
 	// Size the content block perfectly to fit INSIDE the borders
 	placedMain := lipgloss.Place(totalWidth-2, totalHeight-2, lipgloss.Left, lipgloss.Top, content)
 	mainBox := mainBorderStyle.Render(placedMain)
 
-	return header + mainBox + "\n" + menuBar + disclaimer
+	return header + mainBox + "\n" + menuBar + "\n" + disclaimer
 }
 
 func main() {
