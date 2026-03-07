@@ -316,6 +316,34 @@ func (d *DB) Backup() (string, error) {
 	return backupPath, nil
 }
 
+func (d *DB) Restore(backupPath string) error {
+	if d.IsEphemeral {
+		return fmt.Errorf("cannot restore to in-memory database")
+	}
+
+	// Close current connection
+	d.Conn.Close()
+
+	// Copy backup over main db
+	input, err := os.ReadFile(backupPath)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile("biometrk.db", input, 0644)
+	if err != nil {
+		return err
+	}
+
+	// Reopen
+	conn, err := sql.Open("sqlite", "biometrk.db")
+	if err != nil {
+		return err
+	}
+	d.Conn = conn
+	return nil
+}
+
 type Insight struct {
 	Text        string
 	Correlation float64

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -55,6 +56,7 @@ type model struct {
 	tempValues        []string
 	mode              viewMode
 	dbStats           *db.DBStats
+	backups           []string
 	streak            int
 	analyticsInterval int // 7, 30, 90
 	analyticsData     map[string][]float64
@@ -164,6 +166,19 @@ func (m *model) loadAnalytics() {
 		m.err = err
 	} else {
 		m.laggedInsights = lags
+	}
+}
+
+func (m *model) loadBackups() {
+	files, err := os.ReadDir("backups")
+	if err != nil {
+		return
+	}
+	m.backups = nil
+	for _, f := range files {
+		if !f.IsDir() && strings.HasSuffix(f.Name(), ".db") {
+			m.backups = append(m.backups, filepath.Join("backups", f.Name()))
+		}
 	}
 }
 
@@ -308,6 +323,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "d":
 			if m.mode == modeTracker {
 				m.mode = modeDatabase
+				m.loadBackups()
 				stats, err := m.db.GetStats()
 				if err != nil {
 					m.err = err
@@ -333,6 +349,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if err != nil {
 					m.err = err
 				} else {
+					m.loadBackups()
+					stats, _ := m.db.GetStats()
+					m.dbStats = stats
+				}
+			}
+		case "R":
+			if m.mode == modeDatabase && len(m.backups) > 0 {
+				latest := m.backups[len(m.backups)-1]
+				if err := m.db.Restore(latest); err != nil {
+					m.err = err
+				} else {
+					m.loadData()
 					stats, _ := m.db.GetStats()
 					m.dbStats = stats
 				}
@@ -518,8 +546,19 @@ func (m *model) View() string {
 				content += fmt.Sprintf("Date Range:     %s to %s\n", m.dbStats.FirstEntry, m.dbStats.LastEntry)
 				content += fmt.Sprintf("Longest Streak: %d days 🏆\n", m.dbStats.LongestStreak)
 			}
+
+			if len(m.backups) > 0 {
+				content += "\nAvailable Backups:\n"
+				for i, b := range m.backups {
+					if i >= 5 { // Show last 5
+						content += " ...\n"
+						break
+					}
+					content += fmt.Sprintf(" • %s\n", filepath.Base(b))
+				}
+			}
 		}
-		content += "\nPress 'b' to BACKUP. Press 'r' to RESET. Press 'd' or 'q' to return."
+		content += "\nPress 'b' to BACKUP. Press 'R' (shift+r) to RESTORE LATEST. Press 'r' to RESET. Press 'd' or 'q' to return."
 
 	case modeAnalytics:
 		content = fmt.Sprintf("Analytics - Last %d Days\n\n", m.analyticsInterval)
@@ -632,6 +671,7 @@ func (m *model) View() string {
 	}
 	if m.mode == modeDatabase {
 		menuItems = append(menuItems, keyStyle.Render("b")+" backup")
+		menuItems = append(menuItems, keyStyle.Render("R")+" restore")
 		menuItems = append(menuItems, keyStyle.Render("r")+" reset")
 	}
 
