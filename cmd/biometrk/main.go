@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bjornramberg/biometrk/internal/db"
@@ -490,6 +491,15 @@ func (m *model) View() string {
 				asciigraph.Width(45),
 				asciigraph.Precision(1))
 			graphContent += g
+
+			// Add Time Axis
+			startD := time.Now().AddDate(0, 0, -m.analyticsInterval+1).Format("01-02")
+			endD := time.Now().Format("01-02")
+			// Create axis string: "MM-DD . . . . MM-DD"
+			padding := 45 - len(startD) - len(endD) - 2
+			axis := "\n  " + startD + strings.Repeat(" ", padding) + endD
+			graphContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(axis)
+
 			graphs = append(graphs, lipgloss.NewStyle().Padding(1).Render(graphContent))
 		}
 
