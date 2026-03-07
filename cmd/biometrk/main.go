@@ -49,7 +49,7 @@ type model struct {
 	values            map[string]string // metricID -> value
 	cursor            int
 	currentDate       time.Time
-	err         error
+	err               error
 	input             textinput.Model
 	isInputting       bool
 	inputStep         int
@@ -68,7 +68,6 @@ type model struct {
 
 func initialModel(d *db.DB) *model {
 	now := time.Now()
-	// Normalize to midnight for consistent comparisons
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	ti := textinput.New()
@@ -448,70 +447,54 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) View() string {
-	// Styles
+	// 1. MASTER DIMENSIONS
+	totalWidth := m.width - 6
+	if totalWidth < 115 { totalWidth = 115 }
+	
+	// Available height for the main box, excluding header (8), menu (2), and footer (3)
+	totalHeight := m.height - 13
+	if totalHeight < 10 { totalHeight = 10 }
+
+	// 2. STYLES
 	var (
-		headerStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("205")).
-				Bold(true)
-		dateStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("240")).
-				MarginLeft(2)
-		streakStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("214")).
-				MarginLeft(2)
-		metricLabelStyle = lipgloss.NewStyle().
-					Width(25).
-					Foreground(lipgloss.Color("252"))
-		metricValueStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("212"))
-		tooltipStyle = lipgloss.NewStyle().
-				Italic(true).
-				Foreground(lipgloss.Color("245")).
-				MarginTop(1)
+		headerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+		dateStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).MarginLeft(2)
+		streakStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).MarginLeft(2)
 		
-		// Enforce stable size for the main box
-		boxWidth  = m.width - 4
-		boxHeight = m.height - 12 // Reduced offset since header is more compact
+		metricLabelStyle = lipgloss.NewStyle().Width(25).Foreground(lipgloss.Color("252"))
+		metricValueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
 		
-		boxStyle = lipgloss.NewStyle().
+		// Border Styles (No Width/Height set here to prevent breaking)
+		mainBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				Padding(1).
 				BorderForeground(lipgloss.Color("62")).
-				Width(boxWidth).
-				Height(boxHeight)
+				Padding(1)
+		
+		infoBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("62")).
+				Padding(0, 1)
 	)
 
-	if boxWidth < 40 { boxWidth = 40 }
-	if boxHeight < 10 { boxHeight = 10 }
-
-	// 1. PERSISTENT HEADER (LOGO + INFO BOX)
+	// 3. HEADER ASSEMBLY
 	ascii := ` ______     __     ______     __    __     ______     ______   ______     __  __    
 /\  == \   /\ \   /\  __ \   /\ "-./  \   /\  ___\   /\__  _\ /\  == \   /\ \/ /    
 \ \  __<   \ \ \  \ \ \/\ \  \ \ \-./\ \  \ \  __\   \/_/\ \/ \ \  __<   \ \  _"-.  
  \ \_____\  \ \_\  \ \_____\  \ \_\ \ \_\  \ \_____\    \ \_\  \ \_\ \_\  \ \_\ \_\ 
   \/_____/   \/_/   \/_____/   \/_/  \/_/   \/_____/     \/_/   \/_/ /_/   \/_/\/_/`
 	ascii = strings.TrimPrefix(ascii, "\n")
+	logo := headerStyle.Render(ascii)
+	logoWidth := lipgloss.Width(logo)
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	dateStr := m.currentDate.Format("2006-01-02")
-	if m.currentDate.Equal(today) {
-		dateStr += " (Today)"
-	}
+	if m.currentDate.Equal(today) { dateStr += " (Today)" }
 
-	logo := headerStyle.Render(ascii)
-	logoWidth := lipgloss.Width(logo)
+	// Info box width must exactly fill the remaining space to hit totalWidth
+	// TotalWidth - LogoWidth - 2 (spacer)
+	infoBoxOuterWidth := totalWidth - logoWidth - 2
 	
-	// Remaining width for the info box to hit the right edge
-	infoBoxWidth := boxWidth - logoWidth - 2 
-	if infoBoxWidth < 35 { infoBoxWidth = 35 }
-
-	infoBoxStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("63")).
-			Padding(0, 1).
-			Width(infoBoxWidth)
-
 	infoContent := ""
 	if m.db.IsEphemeral {
 		infoContent += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Render("[TEST MODE]") + "\n"
@@ -520,13 +503,14 @@ func (m *model) View() string {
 	infoContent += fmt.Sprintf("Streak: %s\n", streakStyle.Render(fmt.Sprintf("%d days 🔥", m.streak)))
 	infoContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true).Render("Navigate: ← / → keys")
 
-	infoBox := infoBoxStyle.Render(infoContent)
+	// Apply Width to the content inside the info box border
+	placedInfo := lipgloss.Place(infoBoxOuterWidth-2, 4, lipgloss.Left, lipgloss.Top, infoContent)
+	infoBox := infoBorderStyle.Render(placedInfo)
 
 	header := lipgloss.JoinHorizontal(lipgloss.Top, logo, "  ", infoBox) + "\n\n"
 
-	// 2. MAIN CONTENT (Boxed)
+	// 4. MAIN CONTENT ASSEMBLY
 	var content string
-
 	switch m.mode {
 	case modeDatabase:
 		content = "Database Management\n\n"
@@ -534,153 +518,108 @@ func (m *model) View() string {
 			content += "Loading stats...\n"
 		} else {
 			sizeStr := fmt.Sprintf("%.2f KB", float64(m.dbStats.Size)/1024)
-			if m.dbStats.Size > 1024*1024 {
-				sizeStr = fmt.Sprintf("%.2f MB", float64(m.dbStats.Size)/(1024*1024))
-			}
-
+			if m.dbStats.Size > 1024*1024 { sizeStr = fmt.Sprintf("%.2f MB", float64(m.dbStats.Size)/(1024*1024)) }
 			content += fmt.Sprintf("Location:       %s\n", m.dbStats.Path)
 			content += fmt.Sprintf("File Size:      %s\n", sizeStr)
 			content += fmt.Sprintf("Total Entries:  %d\n", m.dbStats.TotalEntries)
-
 			if m.dbStats.TotalEntries > 0 {
 				content += fmt.Sprintf("Date Range:     %s to %s\n", m.dbStats.FirstEntry, m.dbStats.LastEntry)
 				content += fmt.Sprintf("Longest Streak: %d days 🏆\n", m.dbStats.LongestStreak)
 			}
-
 			if len(m.backups) > 0 {
 				content += "\nAvailable Backups:\n"
 				for i, b := range m.backups {
-					if i >= 5 { // Show last 5
-						content += " ...\n"
-						break
-					}
+					if i >= 5 { content += " ...\n"; break }
 					content += fmt.Sprintf(" • %s\n", filepath.Base(b))
 				}
 			}
 		}
-		content += "\nPress 'b' to BACKUP. Press 'R' (shift+r) to RESTORE LATEST. Press 'r' to RESET. Press 'd' or 'q' to return."
 
 	case modeAnalytics:
 		content = fmt.Sprintf("Analytics - Last %d Days\n\n", m.analyticsInterval)
-		chartWidth := (boxWidth - 20) / 2
+		chartWidth := (totalWidth - 20) / 2
 		if chartWidth < 20 { chartWidth = 20 }
 		if chartWidth > 60 { chartWidth = 60 }
 
 		var graphs []string
 		for _, metric := range m.metrics {
 			data := m.analyticsData[metric.id]
-			if len(data) < 2 {
-				data = []float64{0, 0}
-			}
-
+			if len(data) < 2 { data = []float64{0, 0} }
 			graphContent := fmt.Sprintf("%s:\n", metric.label)
 			g := asciigraph.Plot(data, asciigraph.Height(5), asciigraph.Width(chartWidth), asciigraph.Precision(1))
 			graphContent += g
-
+			
 			startD := time.Now().AddDate(0, 0, -m.analyticsInterval+1).Format("01-02")
 			midD := time.Now().AddDate(0, 0, -(m.analyticsInterval / 2)).Format("01-02")
 			endD := time.Now().Format("01-02")
-			
-			labelWidth := 7
-			totalGraphArea := chartWidth + labelWidth
-			padding := (totalGraphArea - len(startD) - len(midD) - len(endD)) / 2
+			padding := (chartWidth + 7 - len(startD) - len(midD) - len(endD)) / 2
 			if padding < 1 { padding = 1 }
-			
 			axis := "\n" + startD + strings.Repeat(" ", padding) + midD + strings.Repeat(" ", padding) + endD
 			graphContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(axis)
-			graphs = append(graphs, lipgloss.NewStyle().Width(totalGraphArea).Render(graphContent))
+			graphs = append(graphs, lipgloss.NewStyle().Width(chartWidth+7).Render(graphContent))
 		}
 
-		if boxWidth > 100 {
+		if totalWidth > 100 {
 			var rows []string
 			for i := 0; i < len(graphs); i += 2 {
-				if i+1 < len(graphs) {
-					rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, graphs[i], "    ", graphs[i+1]))
-				} else {
-					rows = append(rows, graphs[i])
-				}
+				if i+1 < len(graphs) { rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, graphs[i], "    ", graphs[i+1])) } else { rows = append(rows, graphs[i]) }
 			}
 			content += strings.Join(rows, "\n\n")
-		} else {
-			content += strings.Join(graphs, "\n\n")
-		}
+		} else { content += strings.Join(graphs, "\n\n") }
 
 	case modeInsights:
 		content = fmt.Sprintf("Lifestyle Insights - Last %d Days\n\n", m.analyticsInterval)
 		content += "Direct Correlations:\n"
 		if len(m.analyticsInsights) > 0 {
-			for _, insight := range m.analyticsInsights {
-				content += fmt.Sprintf(" • %s\n", insight.Text)
-			}
+			for _, insight := range m.analyticsInsights { content += fmt.Sprintf(" • %s\n", insight.Text) }
 		} else { content += " No strong correlations found yet.\n" }
-
 		content += "\nLead/Lag (Yesterday vs Today):\n"
 		if len(m.laggedInsights) > 0 {
-			for _, insight := range m.laggedInsights {
-				content += fmt.Sprintf(" • %s\n", insight.Text)
-			}
+			for _, insight := range m.laggedInsights { content += fmt.Sprintf(" • %s\n", insight.Text) }
 		} else { content += " No significant patterns detected.\n" }
 
 	default: // modeTracker
-		trackerContent := ""
-		for i, metric := range m.metrics {
-			cursor := "  "
-			if m.cursor == i { cursor = "> " }
-			val := m.values[metric.id]
-			displayVal := "[ ]"
-			if val == "true" { displayVal = "[x]" } else if val != "" && val != "false" { displayVal = fmt.Sprintf("[%s]", val) }
-			trackerContent += fmt.Sprintf("%s%s %s\n", cursor, metricLabelStyle.Render(metric.label), metricValueStyle.Render(displayVal))
-		}
 		activeMetric := m.metrics[m.cursor]
-		trackerContent += tooltipStyle.Render("Tooltip: "+activeMetric.tooltip) + "\n"
-
+		listContent := ""
+		for i, metric := range m.metrics {
+			cursor := "  "; if m.cursor == i { cursor = "> " }
+			val := m.values[metric.id]; displayVal := "[ ]"
+			if val == "true" { displayVal = "[x]" } else if val != "" && val != "false" { displayVal = fmt.Sprintf("[%s]", val) }
+			listContent += fmt.Sprintf("%s%s %s\n", cursor, metricLabelStyle.Render(metric.label), metricValueStyle.Render(displayVal))
+		}
 		if m.isInputting {
 			prompt := activeMetric.label
-			if activeMetric.id == "bp" {
-				prompt = []string{"Systolic", "Diastolic", "Pulse"}[m.inputStep]
-			} else if activeMetric.id == "sleep" {
-				prompt = []string{"Hours", "Minutes"}[m.inputStep]
-			}
-			trackerContent += fmt.Sprintf("\nEnter %s: %s\n", prompt, m.input.View())
-			trackerContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(press Esc to cancel)")
+			if activeMetric.id == "bp" { prompt = []string{"Systolic", "Diastolic", "Pulse"}[m.inputStep] } else if activeMetric.id == "sleep" { prompt = []string{"Hours", "Minutes"}[m.inputStep] }
+			listContent += fmt.Sprintf("\nEnter %s: %s\n", prompt, m.input.View())
+			listContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(press Esc to cancel)")
 		}
-		content = trackerContent
+		tipContent := lipgloss.NewStyle().Bold(true).Render("Metric Information") + "\n\n"
+		tipContent += activeMetric.label + ":\n" + lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("250")).Render(activeMetric.tooltip)
+		
+		content = lipgloss.JoinHorizontal(lipgloss.Top, 
+			lipgloss.NewStyle().Width(totalWidth/2).Render(listContent),
+			lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(1).Width(totalWidth/2-4).Render(tipContent))
 	}
 
-	// 4. PERSISTENT MENU BAR
-	menuStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")).
-			Background(lipgloss.Color("236")).
-			Padding(0, 1).
-			MarginTop(1)
-	
+	// 5. FINAL ASSEMBLY
+	menuStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("236")).Padding(0, 1).MarginTop(1)
 	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-	
 	menuItems := []string{
-		keyStyle.Render("enter") + " edit",
-		keyStyle.Render("t") + " test mode",
-		keyStyle.Render("d") + " database management",
-		keyStyle.Render("a") + " analytics",
-		keyStyle.Render("i") + " insights",
-		keyStyle.Render("q") + " quit",
+		keyStyle.Render("enter") + " edit", keyStyle.Render("t") + " test mode",
+		keyStyle.Render("d") + " database", keyStyle.Render("a") + " analytics",
+		keyStyle.Render("i") + " insights", keyStyle.Render("q") + " quit",
 	}
-	
-	// Add context-specific keys
-	if m.mode == modeAnalytics || m.mode == modeInsights {
-		menuItems = append(menuItems, keyStyle.Render("1-3") + " interval")
-	}
-	if m.mode == modeDatabase {
-		menuItems = append(menuItems, keyStyle.Render("b")+" backup")
-		menuItems = append(menuItems, keyStyle.Render("R")+" restore")
-		menuItems = append(menuItems, keyStyle.Render("r")+" reset")
-	}
-
+	if m.mode == modeAnalytics || m.mode == modeInsights { menuItems = append(menuItems, keyStyle.Render("1-3") + " interval") }
+	if m.mode == modeDatabase { menuItems = append(menuItems, keyStyle.Render("b")+" backup", keyStyle.Render("R")+" restore", keyStyle.Render("r")+" reset") }
 	menuBar := menuStyle.Render(strings.Join(menuItems, "  •  "))
 
 	disclaimer := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("\nDisclaimer: For personal tracking only. Not medical advice. Read more: https://github.com/bjornramberg/biometrk/")
 
-	// Assemble
-	return header + boxStyle.Render(content) + menuBar + disclaimer
+	// Size the content block perfectly to fit INSIDE the borders
+	placedMain := lipgloss.Place(totalWidth-2, totalHeight-2, lipgloss.Left, lipgloss.Top, content)
+	mainBox := mainBorderStyle.Render(placedMain)
+
+	return header + mainBox + "\n" + menuBar + disclaimer
 }
 
 func main() {
