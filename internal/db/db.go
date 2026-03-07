@@ -344,6 +344,68 @@ func (d *DB) Restore(backupPath string) error {
 	return nil
 }
 
+func (d *DB) ExportCSV() (string, error) {
+	exportsDir := "exports"
+	if _, err := os.Stat(exportsDir); os.IsNotExist(err) {
+		os.Mkdir(exportsDir, 0755)
+	}
+
+	filename := filepath.Join(exportsDir, fmt.Sprintf("biometrk-export-%s.csv", time.Now().Format("20060102-150405")))
+	f, err := os.Create(filename)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	rows, err := d.Conn.Query("SELECT date, metric_type, value FROM metrics ORDER BY date DESC, metric_type ASC")
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	f.WriteString("date,metric,value\n")
+	for rows.Next() {
+		var date, mType, val string
+		if err := rows.Scan(&date, &mType, &val); err == nil {
+			f.WriteString(fmt.Sprintf("%s,%s,%s\n", date, mType, val))
+		}
+	}
+
+	return filename, nil
+}
+
+func (d *DB) ExportMarkdown() (string, error) {
+	exportsDir := "exports"
+	if _, err := os.Stat(exportsDir); os.IsNotExist(err) {
+		os.Mkdir(exportsDir, 0755)
+	}
+
+	filename := filepath.Join(exportsDir, fmt.Sprintf("biometrk-report-%s.md", time.Now().Format("20060102-150405")))
+	f, err := os.Create(filename)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	rows, err := d.Conn.Query("SELECT date, metric_type, value FROM metrics ORDER BY date DESC, metric_type ASC")
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	f.WriteString("# Biometrk Health Report\n\n")
+	f.WriteString("| Date | Metric | Value |\n")
+	f.WriteString("| --- | --- | --- |\n")
+	for rows.Next() {
+		var date, mType, val string
+		if err := rows.Scan(&date, &mType, &val); err == nil {
+			f.WriteString(fmt.Sprintf("| %s | %s | %s |\n", date, mType, val))
+		}
+	}
+
+	return filename, nil
+}
+
 type Insight struct {
 	Text        string
 	Correlation float64

@@ -353,6 +353,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.dbStats = stats
 				}
 			}
+		case "e":
+			if m.mode == modeDatabase {
+				_, err := m.db.ExportCSV()
+				if err != nil {
+					m.err = err
+				}
+			}
+		case "m":
+			if m.mode == modeDatabase {
+				_, err := m.db.ExportMarkdown()
+				if err != nil {
+					m.err = err
+				}
+			}
 		case "R":
 			if m.mode == modeDatabase && len(m.backups) > 0 {
 				latest := m.backups[len(m.backups)-1]
@@ -534,6 +548,7 @@ func (m *model) View() string {
 				}
 			}
 		}
+		content += "\nPress 'b' to BACKUP. Press 'R' to RESTORE. Press 'e' to CSV. Press 'm' to MARKDOWN. Press 'r' to RESET. Press 'd' or 'q' to return."
 
 	case modeAnalytics:
 		content = fmt.Sprintf("Analytics - Last %d Days\n\n", m.analyticsInterval)
@@ -610,7 +625,7 @@ func (m *model) View() string {
 		keyStyle.Render("i") + " insights", keyStyle.Render("q") + " quit",
 	}
 	if m.mode == modeAnalytics || m.mode == modeInsights { menuItems = append(menuItems, keyStyle.Render("1-3") + " interval") }
-	if m.mode == modeDatabase { menuItems = append(menuItems, keyStyle.Render("b")+" backup", keyStyle.Render("R")+" restore", keyStyle.Render("r")+" reset") }
+	if m.mode == modeDatabase { menuItems = append(menuItems, keyStyle.Render("b")+" backup", keyStyle.Render("R")+" restore", keyStyle.Render("e")+" csv", keyStyle.Render("m")+" md", keyStyle.Render("r")+" reset") }
 	menuBar := menuStyle.Render(strings.Join(menuItems, "  •  "))
 
 	disclaimer := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("\nDisclaimer: For personal tracking only. Not medical advice. Read more: https://github.com/bjornramberg/biometrk/")
