@@ -487,25 +487,25 @@ func (m *model) View() string {
 			graphContent := fmt.Sprintf("%s:\n", metric.label)
 			g := asciigraph.Plot(data,
 				asciigraph.Height(5),
-				asciigraph.Width(35),
+				asciigraph.Width(45),
 				asciigraph.Precision(1))
 			graphContent += g
 			graphs = append(graphs, lipgloss.NewStyle().Padding(1).Render(graphContent))
 		}
 
 		// Arrange graphs in columns if width allows
-		if m.width > 90 {
+		if m.width > 110 {
+			var rows []string
 			for i := 0; i < len(graphs); i += 2 {
 				if i+1 < len(graphs) {
-					content += lipgloss.JoinHorizontal(lipgloss.Top, graphs[i], graphs[i+1]) + "\n"
+					rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, graphs[i], graphs[i+1]))
 				} else {
-					content += graphs[i] + "\n"
+					rows = append(rows, graphs[i])
 				}
 			}
+			content += lipgloss.JoinVertical(lipgloss.Left, rows...)
 		} else {
-			for _, g := range graphs {
-				content += g + "\n"
-			}
+			content += lipgloss.JoinVertical(lipgloss.Left, graphs...)
 		}
 
 		content += fmt.Sprintf("\nIntervals: [1] 7d  [2] 30d  [3] 90d\n")
