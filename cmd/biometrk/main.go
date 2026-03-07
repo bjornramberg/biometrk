@@ -499,12 +499,13 @@ func (m *model) View() string {
 			axis := "\n" + startD + strings.Repeat(" ", padding) + midD + strings.Repeat(" ", padding) + endD
 			graphContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(axis)
 
-			graphs = append(graphs, graphContent)
+			// Wrap in a fixed-width container to ensure predictable joining
+			graphs = append(graphs, lipgloss.NewStyle().Width(52).Render(graphContent))
 		}
 
 		// Arrange graphs in columns if width allows
 		var finalContent string
-		if m.width > 100 {
+		if m.width > 110 {
 			var rows []string
 			for i := 0; i < len(graphs); i += 2 {
 				if i+1 < len(graphs) {
@@ -515,10 +516,9 @@ func (m *model) View() string {
 					rows = append(rows, graphs[i])
 				}
 			}
-			// Vertical gap: single row space between graph rows
-			finalContent = lipgloss.JoinVertical(lipgloss.Left, strings.Join(rows, "\n\n"))
+			finalContent = strings.Join(rows, "\n\n")
 		} else {
-			finalContent = lipgloss.JoinVertical(lipgloss.Left, strings.Join(graphs, "\n\n"))
+			finalContent = strings.Join(graphs, "\n\n")
 		}
 
 		content += finalContent
