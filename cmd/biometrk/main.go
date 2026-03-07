@@ -465,6 +465,22 @@ func (m *model) View() string {
 	if m.mode == modeAnalytics {
 		content := fmt.Sprintf("Analytics - Last %d Days\n\n", m.analyticsInterval)
 
+		// Calculate dynamic width
+		chartWidth := 40 // Default
+		isDoubleCol := m.width > 110
+		
+		if m.width > 20 {
+			if isDoubleCol {
+				// (TotalWidth - 2*LabelWidth - ColumnGap - 2*BoxPadding) / 2
+				chartWidth = (m.width - 14 - 4 - 4) / 2
+			} else {
+				// TotalWidth - LabelWidth - BoxPadding
+				chartWidth = m.width - 7 - 4
+			}
+		}
+		if chartWidth > 80 { chartWidth = 80 } // Cap max width
+		if chartWidth < 20 { chartWidth = 20 } // Floor min width
+
 		var graphs []string
 		for _, metric := range m.metrics {
 			data := m.analyticsData[metric.id]
@@ -477,40 +493,37 @@ func (m *model) View() string {
 			}
 
 			graphContent := fmt.Sprintf("%s:\n", metric.label)
-			graphWidth := 40
 			g := asciigraph.Plot(data,
 				asciigraph.Height(5),
-				asciigraph.Width(graphWidth),
+				asciigraph.Width(chartWidth),
 				asciigraph.Precision(1))
 			graphContent += g
 
-			// Improved Time Axis
+			// Dynamic Time Axis
 			startD := time.Now().AddDate(0, 0, -m.analyticsInterval+1).Format("01-02")
 			midD := time.Now().AddDate(0, 0, -(m.analyticsInterval / 2)).Format("01-02")
 			endD := time.Now().Format("01-02")
 
-			// Approximate label width from asciigraph is ~7 chars
 			labelWidth := 7
-			totalGraphWidth := graphWidth + labelWidth
+			totalGraphArea := chartWidth + labelWidth
 			
-			padding := (totalGraphWidth - len(startD) - len(midD) - len(endD)) / 2
+			padding := (totalGraphArea - len(startD) - len(midD) - len(endD)) / 2
 			if padding < 1 { padding = 1 }
 			
 			axis := "\n" + startD + strings.Repeat(" ", padding) + midD + strings.Repeat(" ", padding) + endD
 			graphContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(axis)
 
-			// Wrap in a fixed-width container to ensure predictable joining
-			graphs = append(graphs, lipgloss.NewStyle().Width(52).Render(graphContent))
+			// Wrap in a dynamic-width container
+			graphs = append(graphs, lipgloss.NewStyle().Width(totalGraphArea).Render(graphContent))
 		}
 
-		// Arrange graphs in columns if width allows
+		// Arrange graphs
 		var finalContent string
-		if m.width > 110 {
+		if isDoubleCol {
 			var rows []string
 			for i := 0; i < len(graphs); i += 2 {
 				if i+1 < len(graphs) {
-					// Minimal horizontal gap: 2 spaces
-					row := lipgloss.JoinHorizontal(lipgloss.Top, graphs[i], "  ", graphs[i+1])
+					row := lipgloss.JoinHorizontal(lipgloss.Top, graphs[i], "    ", graphs[i+1])
 					rows = append(rows, row)
 				} else {
 					rows = append(rows, graphs[i])
