@@ -38,6 +38,7 @@ const (
 	modeTracker viewMode = iota
 	modeDatabase
 	modeAnalytics
+	modeInsights
 )
 
 type model struct {
@@ -57,6 +58,7 @@ type model struct {
 	analyticsInterval int // 7, 30, 90
 	analyticsData     map[string][]float64
 	analyticsInsights []db.Insight
+	laggedInsights    []db.Insight
 	width             int
 	height            int
 }
@@ -154,6 +156,13 @@ func (m *model) loadAnalytics() {
 		m.err = err
 	} else {
 		m.analyticsInsights = insights
+	}
+
+	lags, err := m.db.GetLeadLagInsights(m.analyticsInterval)
+	if err != nil {
+		m.err = err
+	} else {
+		m.laggedInsights = lags
 	}
 }
 
@@ -261,7 +270,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
-			if m.mode == modeDatabase || m.mode == modeAnalytics {
+			if m.mode == modeDatabase || m.mode == modeAnalytics || m.mode == modeInsights {
 				m.mode = modeTracker
 				return m, nil
 			}
@@ -273,18 +282,25 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.mode = modeTracker
 			}
+		case "i":
+			if m.mode == modeTracker {
+				m.mode = modeInsights
+				m.loadAnalytics()
+			} else {
+				m.mode = modeTracker
+			}
 		case "1":
-			if m.mode == modeAnalytics {
+			if m.mode == modeAnalytics || m.mode == modeInsights {
 				m.analyticsInterval = 7
 				m.loadAnalytics()
 			}
 		case "2":
-			if m.mode == modeAnalytics {
+			if m.mode == modeAnalytics || m.mode == modeInsights {
 				m.analyticsInterval = 30
 				m.loadAnalytics()
 			}
 		case "3":
-			if m.mode == modeAnalytics {
+			if m.mode == modeAnalytics || m.mode == modeInsights {
 				m.analyticsInterval = 90
 				m.loadAnalytics()
 			}
@@ -492,15 +508,35 @@ func (m *model) View() string {
 			}
 		}
 
+		content += fmt.Sprintf("\nIntervals: [1] 7d  [2] 30d  [3] 90d\n")
+		content += "Press 'a' or 'q' to return."
+		s += boxStyle.Render(content)
+		return s
+	}
+
+	if m.mode == modeInsights {
+		content := fmt.Sprintf("Lifestyle Insights - Last %d Days\n\n", m.analyticsInterval)
+		
+		content += "Direct Correlations:\n"
 		if len(m.analyticsInsights) > 0 {
-			content += "\nInsights & Correlations:\n"
 			for _, insight := range m.analyticsInsights {
 				content += fmt.Sprintf(" • %s\n", insight.Text)
 			}
+		} else {
+			content += " No strong correlations found yet. Keep logging!\n"
+		}
+
+		content += "\nLead/Lag (Yesterday vs Today):\n"
+		if len(m.laggedInsights) > 0 {
+			for _, insight := range m.laggedInsights {
+				content += fmt.Sprintf(" • %s\n", insight.Text)
+			}
+		} else {
+			content += " No significant patterns from yesterday detected.\n"
 		}
 
 		content += fmt.Sprintf("\nIntervals: [1] 7d  [2] 30d  [3] 90d\n")
-		content += "Press 'a' or 'q' to return."
+		content += "Press 'i' or 'q' to return."
 		s += boxStyle.Render(content)
 		return s
 	}
@@ -556,7 +592,7 @@ func (m *model) View() string {
 		trackerContent += fmt.Sprintf("\nEnter %s: %s\n", prompt, m.input.View())
 		trackerContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(press Esc to cancel)")
 	} else {
-		trackerContent += "\nPress Enter to toggle/edit. Press 't' for Test Mode. Press 'd' for Stats. Press 'a' for Analytics. Press q to quit."
+		trackerContent += "\nPress Enter to toggle/edit. Press 't' for Test Mode. Press 'd' for Stats. Press 'a' for Analytics. Press 'i' for Insights. Press q to quit."
 	}
 
 	s += boxStyle.Render(trackerContent)

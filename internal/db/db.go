@@ -296,6 +296,55 @@ func (d *DB) GetStreak() (int, error) {
 type Insight struct {
 	Text        string
 	Correlation float64
+	IsLagged    bool
+}
+
+func (d *DB) GetLeadLagInsights(days int) ([]Insight, error) {
+	data, err := d.GetMetricDataInRange(days + 1)
+	if err != nil {
+		return nil, err
+	}
+
+	metrics := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel"}
+	labels := map[string]string{
+		"bp":        "Blood Pressure",
+		"alcohol":   "Alcohol Intake",
+		"hydration": "Hydration",
+		"sleep":     "Sleep",
+		"training":  "Training",
+		"stress":    "Stress",
+		"feel":      "Overall Feel",
+	}
+
+	var insights []Insight
+
+	for _, m1 := range metrics {
+		for _, m2 := range metrics {
+			d1 := data[m1]
+			d2 := data[m2]
+
+			if len(d1) < 4 || len(d2) < 4 {
+				continue
+			}
+
+			// Shift d1 to represent "Yesterday"
+			// Yesterday's d1 vs Today's d2
+			yesterdayD1 := d1[:len(d1)-1]
+			todayD2 := d2[1:]
+
+			r := calculatePearson(yesterdayD1, todayD2)
+
+			if r > 0.4 || r < -0.4 {
+				text := fmt.Sprintf("Yesterday's %s shows a correlation with today's %s.", labels[m1], labels[m2])
+				if r > 0.7 {
+					text = fmt.Sprintf("Yesterday's %s strongly impacts how today's %s turns out.", labels[m1], labels[m2])
+				}
+				insights = append(insights, Insight{Text: text, Correlation: r, IsLagged: true})
+			}
+		}
+	}
+
+	return insights, nil
 }
 
 func (d *DB) GetInsights(days int) ([]Insight, error) {
