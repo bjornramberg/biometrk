@@ -55,10 +55,10 @@ import (
 	streak            int
 	analyticsInterval int // 7, 30, 90
 	analyticsData     map[string][]float64
+	analyticsInsights []db.Insight
 	}
 
-
-func initialModel(d *db.DB) *model {
+	func initialModel(d *db.DB) *model {
 	now := time.Now()
 	// Normalize to midnight for consistent comparisons
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -67,9 +67,9 @@ func initialModel(d *db.DB) *model {
 	ti.Focus()
 
 	m := &model{
-		db: d,
-		metrics: []metricDefinition{
-// ... (rest of metrics definition)
+		db:                d,
+		metrics:           []metricDefinition{
+	// ... (rest of metrics definition)
 
 			{
 				id:      "bp",
@@ -138,16 +138,24 @@ func initialModel(d *db.DB) *model {
 	}
 	m.loadData()
 	return m
-}
+	}
 
-func (m *model) loadAnalytics() {
+	func (m *model) loadAnalytics() {
 	data, err := m.db.GetMetricDataInRange(m.analyticsInterval)
 	if err != nil {
 		m.err = err
 	} else {
 		m.analyticsData = data
 	}
-}
+
+	insights, err := m.db.GetInsights(m.analyticsInterval)
+	if err != nil {
+		m.err = err
+	} else {
+		m.analyticsInsights = insights
+	}
+	}
+
 
 func (m *model) loadData() {
 	dateStr := m.currentDate.Format("2006-01-02")
@@ -430,6 +438,17 @@ func (m *model) View() string {
 				asciigraph.Precision(1))
 			s += graph + "\n\n"
 		}
+
+		if len(m.analyticsInsights) > 0 {
+			s += "Insights & Correlations:\n"
+			for _, insight := range m.analyticsInsights {
+				s += fmt.Sprintf(" • %s\n", insight.Text)
+			}
+			s += "\n"
+		} else {
+			s += "Insights: Keep logging data to see lifestyle correlations!\n\n"
+		}
+
 		s += fmt.Sprintf("\nIntervals: [1] 7 Days  [2] 30 Days  [3] 90 Days\n")
 		s += "Press 'a' or 'q' to return to tracker.\n"
 		return s

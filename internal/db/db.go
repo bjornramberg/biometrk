@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -290,6 +291,101 @@ func (d *DB) GetStreak() (int, error) {
 	}
 
 	return streak, nil
+}
+
+type Insight struct {
+	Text        string
+	Correlation float64
+}
+
+func (d *DB) GetInsights(days int) ([]Insight, error) {
+	data, err := d.GetMetricDataInRange(days)
+	if err != nil {
+		return nil, err
+	}
+
+	metrics := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel"}
+	labels := map[string]string{
+		"bp":        "Blood Pressure",
+		"alcohol":   "Alcohol Intake",
+		"hydration": "Hydration",
+		"sleep":     "Sleep",
+		"training":  "Training",
+		"stress":    "Stress",
+		"feel":      "Overall Feel",
+	}
+
+	var insights []Insight
+
+	// Compare pairs
+	for i := 0; i < len(metrics); i++ {
+		for j := i + 1; j < len(metrics); j++ {
+			m1, m2 := metrics[i], metrics[j]
+			d1, d2 := data[m1], data[m2]
+
+			if len(d1) < 3 || len(d2) < 3 {
+				continue
+			}
+
+			r := calculatePearson(d1, d2)
+			
+			// Only report "Strong" or "Moderate" correlations (|r| > 0.4)
+			if r > 0.4 || r < -0.4 {
+				text := generateInsightText(labels[m1], labels[m2], r)
+				insights = append(insights, Insight{Text: text, Correlation: r})
+			}
+		}
+	}
+
+	return insights, nil
+}
+
+func calculatePearson(x, y []float64) float64 {
+	n := len(x)
+	if n != len(y) || n == 0 {
+		return 0
+	}
+
+	var sumX, sumY, sumXY, sumX2, sumY2 float64
+	for i := 0; i < n; i++ {
+		sumX += x[i]
+		sumY += y[i]
+		sumXY += x[i] * y[i]
+		sumX2 += x[i] * x[i]
+		sumY2 += y[i] * y[i]
+	}
+
+	num := float64(n)*sumXY - sumX*sumY
+	den := (float64(n)*sumX2 - sumX*sumX) * (float64(n)*sumY2 - sumY*sumY)
+	if den <= 0 {
+		return 0
+	}
+
+	return num / math.Sqrt(den)
+}
+
+func generateInsightText(l1, l2 string, r float64) string {
+	strength := "a moderate"
+	if r > 0.7 || r < -0.7 {
+		strength = "a strong"
+	}
+
+	direction := "positive"
+	impact := "increase together"
+	if r < 0 {
+		direction = "negative"
+		impact = "move in opposite directions"
+	}
+
+	// Specific phrasing for common pairs
+	if (l1 == "Training" || l2 == "Training") && r > 0.4 {
+		return fmt.Sprintf("Training consistently correlates with a better %s.", strings.ReplaceAll(l1+l2, "Training", ""))
+	}
+	if (l1 == "Alcohol Intake" || l2 == "Alcohol Intake") && r < -0.4 {
+		return fmt.Sprintf("Alcohol intake shows %s link to decreased %s.", strength, strings.ReplaceAll(l1+l2, "Alcohol Intake", ""))
+	}
+
+	return fmt.Sprintf("There is %s %s correlation between %s and %s (%s).", strength, direction, l1, l2, impact)
 }
 
 func (d *DB) GetMetricDataInRange(days int) (map[string][]float64, error) {
