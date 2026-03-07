@@ -659,7 +659,7 @@ func (m *model) View() string {
 	menuItems := []string{
 		keyStyle.Render("enter") + " edit",
 		keyStyle.Render("t") + " test mode",
-		keyStyle.Render("d") + " stats",
+		keyStyle.Render("d") + " database management",
 		keyStyle.Render("a") + " analytics",
 		keyStyle.Render("i") + " insights",
 		keyStyle.Render("q") + " quit",
