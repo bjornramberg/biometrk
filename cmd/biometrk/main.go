@@ -459,12 +459,7 @@ func (m *model) View() string {
  \ \_____\  \ \_\  \ \_____\  \ \_\ \ \_\  \ \_____\    \ \_\  \ \_\ \_\  \ \_\ \_\ 
   \/_____/   \/_/   \/_____/   \/_/  \/_/   \/_____/     \/_/   \/_/ /_/   \/_/\/_/`
 
-	header := ""
-	if m.mode == modeTracker {
-		header = headerStyle.Render(ascii) + "\n\n"
-	} else {
-		header = headerStyle.Render("BIOMETRK") + "\n"
-	}
+	header := headerStyle.Render(ascii) + "\n\n"
 
 	// 2. SUB-HEADER (Date / Streak)
 	title := titleStyle.Render("Biometrk")
@@ -480,13 +475,10 @@ func (m *model) View() string {
 	}
 	
 	subHeader := title + dateStyle.Render("Date: "+dateStr) + streakStyle.Render(fmt.Sprintf("Streak: %d days 🔥", m.streak)) + "\n"
-	if m.mode == modeTracker {
-		subHeader += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Use Left/Right to navigate days.") + "\n"
-	}
+	subHeader += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Use Left/Right to navigate days.") + "\n"
 
 	// 3. MAIN CONTENT (Boxed)
 	var content string
-	var modeFooter string
 
 	switch m.mode {
 	case modeDatabase:
@@ -505,7 +497,6 @@ func (m *model) View() string {
 				}
 			}
 		}
-		modeFooter = "\nPress 'r' to RESET (DELETE ALL DATA). Press 'd' or 'q' to return."
 
 	case modeAnalytics:
 		content = fmt.Sprintf("Analytics - Last %d Days\n\n", m.analyticsInterval)
@@ -551,7 +542,6 @@ func (m *model) View() string {
 		} else {
 			content += strings.Join(graphs, "\n\n")
 		}
-		modeFooter = fmt.Sprintf("\n\nIntervals: [1] 7d  [2] 30d  [3] 90d  | Press 'a' or 'q' to return.")
 
 	case modeInsights:
 		content = fmt.Sprintf("Lifestyle Insights - Last %d Days\n\n", m.analyticsInterval)
@@ -568,7 +558,6 @@ func (m *model) View() string {
 				content += fmt.Sprintf(" • %s\n", insight.Text)
 			}
 		} else { content += " No significant patterns detected.\n" }
-		modeFooter = fmt.Sprintf("\nIntervals: [1] 7d  [2] 30d  [3] 90d  | Press 'i' or 'q' to return.")
 
 	default: // modeTracker
 		trackerContent := ""
@@ -592,17 +581,42 @@ func (m *model) View() string {
 			}
 			trackerContent += fmt.Sprintf("\nEnter %s: %s\n", prompt, m.input.View())
 			trackerContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(press Esc to cancel)")
-		} else {
-			trackerContent += "\nPress Enter to toggle/edit. Press 't' for Test Mode. Press 'd' for Stats. Press 'a' for Analytics. Press 'i' for Insights. Press q to quit."
 		}
 		content = trackerContent
 	}
 
-	// 4. PERSISTENT FOOTER
+	// 4. PERSISTENT MENU BAR
+	menuStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
+			Background(lipgloss.Color("236")).
+			Padding(0, 1).
+			MarginTop(1)
+	
+	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+	
+	menuItems := []string{
+		keyStyle.Render("enter") + " edit",
+		keyStyle.Render("t") + " test mode",
+		keyStyle.Render("d") + " stats",
+		keyStyle.Render("a") + " analytics",
+		keyStyle.Render("i") + " insights",
+		keyStyle.Render("q") + " quit",
+	}
+	
+	// Add context-specific keys
+	if m.mode == modeAnalytics || m.mode == modeInsights {
+		menuItems = append(menuItems, keyStyle.Render("1-3") + " interval")
+	}
+	if m.mode == modeDatabase {
+		menuItems = append(menuItems, keyStyle.Render("r") + " reset")
+	}
+
+	menuBar := menuStyle.Render(strings.Join(menuItems, "  •  "))
+
 	disclaimer := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("\nDisclaimer: For personal tracking only. Not medical advice. Read more: https://github.com/bjornramberg/biometrk/")
 
 	// Assemble
-	return header + subHeader + boxStyle.Render(content+modeFooter) + disclaimer
+	return header + subHeader + boxStyle.Render(content) + menuBar + disclaimer
 }
 
 func main() {
