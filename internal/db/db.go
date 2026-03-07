@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"strconv"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -247,7 +249,7 @@ func (d *DB) GetStreak() (int, error) {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	yesterday := today.AddDate(0, 0, -1)
-	
+
 	checkDate := today
 	first := true
 
@@ -289,3 +291,84 @@ func (d *DB) GetStreak() (int, error) {
 
 	return streak, nil
 }
+
+func (d *DB) GetMetricDataInRange(days int) (map[string][]float64, error) {
+	data := make(map[string][]float64)
+	
+	// Initialize all known metrics with empty slices to ensure we have a sequence for each
+	metricsList := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel"}
+	for _, m := range metricsList {
+		data[m] = make([]float64, 0, days)
+	}
+
+	endDate := time.Now().Format("2006-01-02")
+	startDate := time.Now().AddDate(0, 0, -days+1).Format("2006-01-02")
+
+	query := `SELECT date, metric_type, value FROM metrics WHERE date BETWEEN ? AND ? ORDER BY date ASC`
+	rows, err := d.Conn.Query(query, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Temporary map to store values by date and metric to handle gaps
+	tempData := make(map[string]map[string]float64)
+	for rows.Next() {
+		var dStr, mType, valStr string
+		if err := rows.Scan(&dStr, &mType, &valStr); err == nil {
+			if _, ok := tempData[dStr]; !ok {
+				tempData[dStr] = make(map[string]float64)
+			}
+
+			// Parse value
+			var val float64
+			if mType == "bp" {
+				parts := strings.Split(valStr, "/")
+				if len(parts) > 0 {
+					if f, err := strconv.ParseFloat(parts[0], 64); err == nil {
+						val = f
+					}
+				}
+			} else if mType == "sleep" {
+				parts := strings.Split(valStr, ":")
+				if len(parts) == 2 {
+					h, _ := strconv.ParseFloat(parts[0], 64)
+					m, _ := strconv.ParseFloat(parts[1], 64)
+					val = h*60 + m
+				}
+			} else if valStr == "true" {
+				val = 1
+			} else if valStr == "false" {
+				val = 0
+			} else if valStr == "Normal" {
+				val = 1
+			} else if valStr == "Low" {
+				val = 0
+			} else {
+				if f, err := strconv.ParseFloat(valStr, 64); err == nil {
+					val = f
+				}
+			}
+			tempData[dStr][mType] = val
+		}
+	}
+
+	// Fill in the data sequences for all metrics
+	for i := 0; i < days; i++ {
+		dStr := time.Now().AddDate(0, 0, -days+1+i).Format("2006-01-02")
+		dayMetrics := tempData[dStr]
+
+		for _, mType := range metricsList {
+			val := 0.0
+			if dayMetrics != nil {
+				if v, ok := dayMetrics[mType]; ok {
+					val = v
+				}
+			}
+			data[mType] = append(data[mType], val)
+		}
+	}
+
+	return data, nil
+}
+

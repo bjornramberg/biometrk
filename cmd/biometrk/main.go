@@ -9,18 +9,19 @@ import (
 	"github.com/bjornramberg/biometrk/internal/db"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-)
+	"github.com/guptarohit/asciigraph"
+	)
 
-type metricType int
+	type metricType int
 
-const (
+	const (
 	typeToggle metricType = iota
 	typeInput
 	typeEnum
 	typeRating
-)
+	)
 
-type metricDefinition struct {
+	type metricDefinition struct {
 	id          string
 	label       string
 	tooltip     string
@@ -28,29 +29,34 @@ type metricDefinition struct {
 	placeholder string
 	validate    func(string) bool
 	options     []string // For typeEnum
-}
+	}
 
-type viewMode int
+	type viewMode int
 
-const (
+	const (
 	modeTracker viewMode = iota
 	modeDatabase
-)
-type model struct {
-	db          *db.DB
-	metrics     []metricDefinition
-	values      map[string]string // metricID -> value
-	cursor      int
-	currentDate time.Time
-	err         error
-	input       textinput.Model
-	isInputting bool
-	inputStep   int
-	tempValues  []string
-	mode        viewMode
-	dbStats     *db.DBStats
-	streak      int
-}
+	modeAnalytics
+	)
+
+	type model struct {
+	db                *db.DB
+	metrics           []metricDefinition
+	values            map[string]string // metricID -> value
+	cursor            int
+	currentDate       time.Time
+	err               error
+	input             textinput.Model
+	isInputting       bool
+	inputStep         int
+	tempValues        []string
+	mode              viewMode
+	dbStats           *db.DBStats
+	streak            int
+	analyticsInterval int // 7, 30, 90
+	analyticsData     map[string][]float64
+	}
+
 
 func initialModel(d *db.DB) *model {
 	now := time.Now()
@@ -125,12 +131,22 @@ func initialModel(d *db.DB) *model {
 				},
 			},
 		},
-		values:      make(map[string]string),
-		currentDate: today,
-		input:       ti,
+		values:            make(map[string]string),
+		currentDate:       today,
+		input:             ti,
+		analyticsInterval: 7,
 	}
 	m.loadData()
 	return m
+}
+
+func (m *model) loadAnalytics() {
+	data, err := m.db.GetMetricDataInRange(m.analyticsInterval)
+	if err != nil {
+		m.err = err
+	} else {
+		m.analyticsData = data
+	}
 }
 
 func (m *model) loadData() {
@@ -231,11 +247,33 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
-			if m.mode == modeDatabase {
+			if m.mode == modeDatabase || m.mode == modeAnalytics {
 				m.mode = modeTracker
 				return m, nil
 			}
 			return m, tea.Quit
+		case "a":
+			if m.mode == modeTracker {
+				m.mode = modeAnalytics
+				m.loadAnalytics()
+			} else {
+				m.mode = modeTracker
+			}
+		case "1":
+			if m.mode == modeAnalytics {
+				m.analyticsInterval = 7
+				m.loadAnalytics()
+			}
+		case "2":
+			if m.mode == modeAnalytics {
+				m.analyticsInterval = 30
+				m.loadAnalytics()
+			}
+		case "3":
+			if m.mode == modeAnalytics {
+				m.analyticsInterval = 90
+				m.loadAnalytics()
+			}
 		case "d":
 			if m.mode == modeTracker {
 				m.mode = modeDatabase
@@ -369,6 +407,34 @@ func (m *model) View() string {
 		return s
 	}
 
+	if m.mode == modeAnalytics {
+		s += fmt.Sprintf("Analytics - Last %d Days\n\n", m.analyticsInterval)
+		s += "Showing trends for each metric:\n\n"
+
+		for _, metric := range m.metrics {
+			data := m.analyticsData[metric.id]
+			if len(data) < 2 {
+				// We need at least 2 points to plot.
+				// If we have 1 or 0, we can still plot something basic or show a message.
+				if len(data) == 1 {
+					data = append(data, data[0]) // Duplicate for plot
+				} else {
+					data = []float64{0, 0}
+				}
+			}
+
+			s += fmt.Sprintf("%s:\n", metric.label)
+			graph := asciigraph.Plot(data, 
+				asciigraph.Height(5), 
+				asciigraph.Width(50), 
+				asciigraph.Precision(1))
+			s += graph + "\n\n"
+		}
+		s += fmt.Sprintf("\nIntervals: [1] 7 Days  [2] 30 Days  [3] 90 Days\n")
+		s += "Press 'a' or 'q' to return to tracker.\n"
+		return s
+	}
+
 	title := "Biometrk - Health Tracker"
 	if m.db.IsEphemeral {
 		title += " [TEST MODE]"
@@ -418,7 +484,7 @@ func (m *model) View() string {
 		s += fmt.Sprintf("\nEnter %s: %s\n", prompt, m.input.View())
 		s += "(press Esc to cancel)\n"
 	} else {
-		s += "\nPress Enter to toggle/edit. Press 't' for Test Mode. Press 'd' for Stats. Press q to quit.\n"
+		s += "\nPress Enter to toggle/edit. Press 't' for Test Mode. Press 'd' for Stats. Press 'a' for Analytics. Press q to quit.\n"
 	}
 
 	if m.err != nil {
