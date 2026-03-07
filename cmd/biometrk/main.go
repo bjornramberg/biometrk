@@ -415,11 +415,6 @@ func (m *model) View() string {
 		headerStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("205")).
 				Bold(true)
-		titleStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FAFAFA")).
-				Background(lipgloss.Color("#7D56F4")).
-				Padding(0, 1).
-				Bold(true)
 		dateStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("240")).
 				MarginLeft(2)
@@ -466,24 +461,28 @@ func (m *model) View() string {
 		dateStr += " (Today)"
 	}
 
+	logo := headerStyle.Render(ascii)
+	logoWidth := lipgloss.Width(logo)
+	
+	// Remaining width for the info box to hit the right edge
+	infoBoxWidth := boxWidth - logoWidth - 2 
+	if infoBoxWidth < 35 { infoBoxWidth = 35 }
+
 	infoBoxStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("63")).
 			Padding(0, 1).
-			Width(35)
+			Width(infoBoxWidth)
 
-	title := titleStyle.Render("Biometrk")
+	infoContent := ""
 	if m.db.IsEphemeral {
-		title += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" [TEST MODE]")
+		infoContent += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Render("[TEST MODE]") + "\n"
 	}
-
-	infoContent := title + "\n"
 	infoContent += fmt.Sprintf("Date: %s\n", dateStyle.Render(dateStr))
 	infoContent += fmt.Sprintf("Streak: %s\n", streakStyle.Render(fmt.Sprintf("%d days 🔥", m.streak)))
 	infoContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true).Render("Navigate: ← / → keys")
 
 	infoBox := infoBoxStyle.Render(infoContent)
-	logo := headerStyle.Render(ascii)
 
 	header := lipgloss.JoinHorizontal(lipgloss.Top, logo, "  ", infoBox) + "\n\n"
 
