@@ -11,6 +11,7 @@ GEMINI.md
 
 # Personal data
 data/
+exports/
 *.csv
 *.json
 !example_*.json

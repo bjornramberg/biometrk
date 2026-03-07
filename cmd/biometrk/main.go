@@ -28,6 +28,8 @@ type metricDefinition struct {
 	id          string
 	label       string
 	tooltip     string
+	guidance    string
+	source      string
 	mType       metricType
 	placeholder string
 	validate    func(string) bool
@@ -78,59 +80,74 @@ func initialModel(d *db.DB) *model {
 		db: d,
 		metrics: []metricDefinition{
 			{
-				id:      "bp",
-				label:   "Blood Pressure",
-				tooltip: "Guided entry: Systolic, Diastolic, then Pulse",
-				mType:   typeInput,
+				id:       "bp",
+				label:    "Blood Pressure",
+				tooltip:  "Guided entry: Systolic, Diastolic, then Pulse",
+				guidance: "AHA Categories:\n • Normal: <120 / <80 mmHg\n • Elevated: 120-129 / <80 mmHg\n • Stage 1 Hypertension: 130-139 / 80-89 mmHg",
+				source:   "American Heart Association (AHA)",
+				mType:    typeInput,
 				validate: func(s string) bool {
 					val, err := strconv.Atoi(s)
 					return err == nil && val > 0 && val < 300
 				},
 			},
+
 			{
-				id:      "alcohol",
-				label:   "Alcohol Intake",
-				tooltip: "Did you drink alcohol today?",
-				mType:   typeToggle,
+				id:       "alcohol",
+				label:    "Alcohol Intake",
+				tooltip:  "Did you drink alcohol today?",
+				guidance: "Moderate intake is defined as:\n • Women: Up to 1 drink/day\n • Men: Up to 2 drinks/day\nRisk of health issues increases with any consumption.",
+				source:   "WHO / Dietary Guidelines for Americans",
+				mType:    typeToggle,
 			},
 			{
-				id:      "hydration",
-				label:   "Hydration",
-				tooltip: "Target is 'Normal' hydration",
-				mType:   typeEnum,
-				options: []string{"Low", "Normal"},
+				id:       "hydration",
+				label:    "Hydration",
+				tooltip:  "Target is 'Normal' hydration",
+				guidance: "Aim for 'Normal' (roughly 2-3 liters of total fluids for most adults).",
+				source:   "Mayo Clinic",
+				mType:    typeEnum,
+				options:  []string{"Low", "Normal"},
 			},
 			{
-				id:      "sleep",
-				label:   "Sleep Duration",
-				tooltip: "Guided entry: Hours then Minutes",
-				mType:   typeInput,
+				id:       "sleep",
+				label:    "Sleep Duration",
+				tooltip:  "Guided entry: Hours then Minutes",
+				guidance: "Most adults should aim for 7–9 hours of quality sleep per night.",
+				source:   "National Sleep Foundation",
+				mType:    typeInput,
 				validate: func(s string) bool {
 					val, err := strconv.Atoi(s)
 					return err == nil && val >= 0 && val < 60
 				},
 			},
 			{
-				id:      "training",
-				label:   "Training",
-				tooltip: "Walk > 30 min OR high pulse training > 30 min",
-				mType:   typeToggle,
+				id:       "training",
+				label:    "Training",
+				tooltip:  "Walk > 30 min OR high pulse training > 30 min",
+				guidance: "Aim for at least 150 min of moderate activity per week.",
+				source:   "WHO / CDC",
+				mType:    typeToggle,
 			},
 			{
-				id:      "stress",
-				label:   "Stress Level",
-				tooltip: "Perceived stress (1-5, 1=lowest)",
-				mType:   typeRating,
+				id:       "stress",
+				label:    "Stress Level",
+				tooltip:  "Perceived stress (1-5, 1=lowest)",
+				guidance: "Chronic high stress impacts both mental and physical health.",
+				source:   "Mental Health America",
+				mType:    typeRating,
 				validate: func(s string) bool {
 					val, err := strconv.Atoi(s)
 					return err == nil && val >= 1 && val <= 5
 				},
 			},
 			{
-				id:      "feel",
-				label:   "Overall Feel",
-				tooltip: "Perceived wellbeing (1-5, 1=lowest)",
-				mType:   typeRating,
+				id:       "feel",
+				label:    "Overall Feel",
+				tooltip:  "Perceived wellbeing (1-5, 1=lowest)",
+				guidance: "Tracking subjective feel can help identify long-term wellness trends.",
+				source:   "Biometrk Wellness Tracking",
+				mType:    typeRating,
 				validate: func(s string) bool {
 					val, err := strconv.Atoi(s)
 					return err == nil && val >= 1 && val <= 5
@@ -620,8 +637,19 @@ func (m *model) View() string {
 			listContent += fmt.Sprintf("\nEnter %s: %s\n", prompt, m.input.View())
 			listContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(press Esc to cancel)")
 		}
-		tipContent := lipgloss.NewStyle().Bold(true).Render("Metric Information") + "\n\n"
-		tipContent += activeMetric.label + ":\n" + lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("250")).Render(activeMetric.tooltip)
+		divider := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Render(strings.Repeat("-", totalWidth/2-6))
+		tipContent := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63")).Render("Metric Details") + "\n"
+		tipContent += lipgloss.NewStyle().Bold(true).Render(activeMetric.label) + "\n"
+		tipContent += divider + "\n\n"
+		tipContent += lipgloss.NewStyle().Bold(true).Render("How to Enter:") + "\n"
+		tipContent += activeMetric.tooltip + "\n\n"
+		if activeMetric.guidance != "" {
+			tipContent += lipgloss.NewStyle().Bold(true).Render("Health Guidance:") + "\n"
+			tipContent += activeMetric.guidance + "\n\n"
+		}
+		if activeMetric.source != "" {
+			tipContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Source: "+activeMetric.source)
+		}
 		
 		content = lipgloss.JoinHorizontal(lipgloss.Top, 
 			lipgloss.NewStyle().Width(totalWidth/2).Render(listContent),
