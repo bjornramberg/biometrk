@@ -50,6 +50,7 @@ type model struct {
 	cursor            int
 	currentDate       time.Time
 	err               error
+	exportMsg         string
 	input             textinput.Model
 	isInputting       bool
 	inputStep         int
@@ -287,12 +288,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			if m.mode == modeDatabase || m.mode == modeAnalytics || m.mode == modeInsights {
 				m.mode = modeTracker
+				m.exportMsg = ""
 				return m, nil
 			}
 			return m, tea.Quit
 		case "a":
 			if m.mode == modeTracker {
 				m.mode = modeAnalytics
+				m.exportMsg = ""
 				m.loadAnalytics()
 			} else {
 				m.mode = modeTracker
@@ -300,6 +303,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "i":
 			if m.mode == modeTracker {
 				m.mode = modeInsights
+				m.exportMsg = ""
 				m.loadAnalytics()
 			} else {
 				m.mode = modeTracker
@@ -355,16 +359,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "e":
 			if m.mode == modeDatabase {
-				_, err := m.db.ExportCSV()
+				path, err := m.db.ExportCSV()
 				if err != nil {
 					m.err = err
+				} else {
+					m.exportMsg = fmt.Sprintf("Exported to %s", path)
 				}
 			}
 		case "m":
 			if m.mode == modeDatabase {
-				_, err := m.db.ExportMarkdown()
+				path, err := m.db.ExportMarkdown()
 				if err != nil {
 					m.err = err
+				} else {
+					m.exportMsg = fmt.Sprintf("Report saved to %s", path)
 				}
 			}
 		case "R":
@@ -546,6 +554,10 @@ func (m *model) View() string {
 					if i >= 5 { content += " ...\n"; break }
 					content += fmt.Sprintf(" • %s\n", filepath.Base(b))
 				}
+			}
+
+			if m.exportMsg != "" {
+				content += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true).Render("✔ "+m.exportMsg) + "\n"
 			}
 		}
 		content += "\nPress 'b' to BACKUP. Press 'R' to RESTORE. Press 'e' to CSV. Press 'm' to MARKDOWN. Press 'r' to RESET. Press 'd' or 'q' to return."
