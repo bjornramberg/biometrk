@@ -9,19 +9,20 @@ import (
 	"github.com/bjornramberg/biometrk/internal/db"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/guptarohit/asciigraph"
-	)
+)
 
-	type metricType int
+type metricType int
 
-	const (
+const (
 	typeToggle metricType = iota
 	typeInput
 	typeEnum
 	typeRating
-	)
+)
 
-	type metricDefinition struct {
+type metricDefinition struct {
 	id          string
 	label       string
 	tooltip     string
@@ -29,17 +30,17 @@ import (
 	placeholder string
 	validate    func(string) bool
 	options     []string // For typeEnum
-	}
+}
 
-	type viewMode int
+type viewMode int
 
-	const (
+const (
 	modeTracker viewMode = iota
 	modeDatabase
 	modeAnalytics
-	)
+)
 
-	type model struct {
+type model struct {
 	db                *db.DB
 	metrics           []metricDefinition
 	values            map[string]string // metricID -> value
@@ -56,9 +57,11 @@ import (
 	analyticsInterval int // 7, 30, 90
 	analyticsData     map[string][]float64
 	analyticsInsights []db.Insight
-	}
+	width             int
+	height            int
+}
 
-	func initialModel(d *db.DB) *model {
+func initialModel(d *db.DB) *model {
 	now := time.Now()
 	// Normalize to midnight for consistent comparisons
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -67,10 +70,8 @@ import (
 	ti.Focus()
 
 	m := &model{
-		db:                d,
-		metrics:           []metricDefinition{
-	// ... (rest of metrics definition)
-
+		db: d,
+		metrics: []metricDefinition{
 			{
 				id:      "bp",
 				label:   "Blood Pressure",
@@ -138,9 +139,9 @@ import (
 	}
 	m.loadData()
 	return m
-	}
+}
 
-	func (m *model) loadAnalytics() {
+func (m *model) loadAnalytics() {
 	data, err := m.db.GetMetricDataInRange(m.analyticsInterval)
 	if err != nil {
 		m.err = err
@@ -154,8 +155,7 @@ import (
 	} else {
 		m.analyticsInsights = insights
 	}
-	}
-
+}
 
 func (m *model) loadData() {
 	dateStr := m.currentDate.Format("2006-01-02")
@@ -190,6 +190,12 @@ func (m *model) Init() tea.Cmd {
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+	}
+
 	if m.isInputting {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -387,78 +393,122 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) View() string {
+	// Styles
+	var (
+		headerStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("205")).
+				Bold(true).
+				MarginBottom(1)
+		titleStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FAFAFA")).
+				Background(lipgloss.Color("#7D56F4")).
+				Padding(0, 1).
+				Bold(true)
+		dateStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("240")).
+				MarginLeft(2)
+		streakStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("214")).
+				MarginLeft(2)
+		metricLabelStyle = lipgloss.NewStyle().
+					Width(25).
+					Foreground(lipgloss.Color("252"))
+		metricValueStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("212"))
+		tooltipStyle = lipgloss.NewStyle().
+				Italic(true).
+				Foreground(lipgloss.Color("245")).
+				MarginTop(1)
+		boxStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				Padding(1).
+				BorderForeground(lipgloss.Color("62"))
+	)
+
 	ascii := ` ______     __     ______     __    __     ______     ______   ______     __  __    
 /\  == \   /\ \   /\  __ \   /\ "-./  \   /\  ___\   /\__  _\ /\  == \   /\ \/ /    
 \ \  __<   \ \ \  \ \ \/\ \  \ \ \-./\ \  \ \  __\   \/_/\ \/ \ \  __<   \ \  _"-.  
  \ \_____\  \ \_\  \ \_____\  \ \_\ \ \_\  \ \_____\    \ \_\  \ \_\ \_\  \ \_\ \_\ 
   \/_____/   \/_/   \/_____/   \/_/  \/_/   \/_____/     \/_/   \/_/ /_/   \/_/\/_/`
-	
-	s := ascii + "\n\n"
-	
+
+	s := headerStyle.Render(ascii) + "\n\n"
+
 	if m.mode == modeDatabase {
-		s += "Database Management\n\n"
+		content := "Database Management\n\n"
 		if m.dbStats == nil {
-			s += "Loading stats...\n"
+			content += "Loading stats...\n"
 		} else {
-			s += fmt.Sprintf("Total Entries:  %d\n", m.dbStats.TotalEntries)
+			content += fmt.Sprintf("Total Entries:  %d\n", m.dbStats.TotalEntries)
 			if m.dbStats.TotalEntries > 0 {
-				s += fmt.Sprintf("First Entry:    %s\n", m.dbStats.FirstEntry)
-				s += fmt.Sprintf("Last Entry:     %s\n", m.dbStats.LastEntry)
-				s += fmt.Sprintf("Longest Streak: %d days 🏆\n", m.dbStats.LongestStreak)
-				s += "\nBreakdown:\n"
+				content += fmt.Sprintf("First Entry:    %s\n", m.dbStats.FirstEntry)
+				content += fmt.Sprintf("Last Entry:     %s\n", m.dbStats.LastEntry)
+				content += fmt.Sprintf("Longest Streak: %d days 🏆\n", m.dbStats.LongestStreak)
+				content += "\nBreakdown:\n"
 				for mType, count := range m.dbStats.MetricCounts {
-					s += fmt.Sprintf(" - %-15s: %d\n", mType, count)
+					content += fmt.Sprintf(" • %-15s: %d\n", mType, count)
 				}
 			}
 		}
-		s += "\nPress 'r' to RESET (DELETE ALL DATA). Press 'd' or 'q' to return.\n"
+		content += "\nPress 'r' to RESET (DELETE ALL DATA). Press 'd' or 'q' to return."
+		s += boxStyle.Render(content)
 		return s
 	}
 
 	if m.mode == modeAnalytics {
-		s += fmt.Sprintf("Analytics - Last %d Days\n\n", m.analyticsInterval)
-		s += "Showing trends for each metric:\n\n"
+		content := fmt.Sprintf("Analytics - Last %d Days\n\n", m.analyticsInterval)
 
+		var graphs []string
 		for _, metric := range m.metrics {
 			data := m.analyticsData[metric.id]
 			if len(data) < 2 {
-				// We need at least 2 points to plot.
-				// If we have 1 or 0, we can still plot something basic or show a message.
 				if len(data) == 1 {
-					data = append(data, data[0]) // Duplicate for plot
+					data = append(data, data[0])
 				} else {
 					data = []float64{0, 0}
 				}
 			}
 
-			s += fmt.Sprintf("%s:\n", metric.label)
-			graph := asciigraph.Plot(data, 
-				asciigraph.Height(5), 
-				asciigraph.Width(50), 
+			graphContent := fmt.Sprintf("%s:\n", metric.label)
+			g := asciigraph.Plot(data,
+				asciigraph.Height(5),
+				asciigraph.Width(35),
 				asciigraph.Precision(1))
-			s += graph + "\n\n"
+			graphContent += g
+			graphs = append(graphs, lipgloss.NewStyle().Padding(1).Render(graphContent))
+		}
+
+		// Arrange graphs in columns if width allows
+		if m.width > 90 {
+			for i := 0; i < len(graphs); i += 2 {
+				if i+1 < len(graphs) {
+					content += lipgloss.JoinHorizontal(lipgloss.Top, graphs[i], graphs[i+1]) + "\n"
+				} else {
+					content += graphs[i] + "\n"
+				}
+			}
+		} else {
+			for _, g := range graphs {
+				content += g + "\n"
+			}
 		}
 
 		if len(m.analyticsInsights) > 0 {
-			s += "Insights & Correlations:\n"
+			content += "\nInsights & Correlations:\n"
 			for _, insight := range m.analyticsInsights {
-				s += fmt.Sprintf(" • %s\n", insight.Text)
+				content += fmt.Sprintf(" • %s\n", insight.Text)
 			}
-			s += "\n"
-		} else {
-			s += "Insights: Keep logging data to see lifestyle correlations!\n\n"
 		}
 
-		s += fmt.Sprintf("\nIntervals: [1] 7 Days  [2] 30 Days  [3] 90 Days\n")
-		s += "Press 'a' or 'q' to return to tracker.\n"
+		content += fmt.Sprintf("\nIntervals: [1] 7d  [2] 30d  [3] 90d\n")
+		content += "Press 'a' or 'q' to return."
+		s += boxStyle.Render(content)
 		return s
 	}
 
-	title := "Biometrk - Health Tracker"
+	title := titleStyle.Render("Biometrk - Health Tracker")
 	if m.db.IsEphemeral {
-		title += " [TEST MODE]"
+		title += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" [TEST MODE]")
 	}
-	s += title + "\n\n"
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -466,30 +516,33 @@ func (m *model) View() string {
 	if m.currentDate.Equal(today) {
 		dateStr += " (Today)"
 	}
-	s += fmt.Sprintf("Date: %-20s Streak: %d days, keep going! 🔥\n", dateStr, m.streak)
-	s += "Use Left/Right to navigate days.\n\n"
 
+	s += title + dateStyle.Render("Date: "+dateStr) + streakStyle.Render(fmt.Sprintf("Streak: %d days 🔥", m.streak)) + "\n"
+	s += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Use Left/Right to navigate days.") + "\n\n"
+
+	trackerContent := ""
 	for i, metric := range m.metrics {
-		cursor := " "
+		cursor := "  "
 		if m.cursor == i {
-			cursor = ">"
+			cursor = "> "
 		}
-		
+
 		val := m.values[metric.id]
 		displayVal := "[ ]"
 		if val == "true" {
 			displayVal = "[x]"
 		} else if val != "" && val != "false" {
 			displayVal = fmt.Sprintf("[%s]", val)
-		} else if metric.mType != typeToggle {
-			displayVal = "[ ]"
 		}
 
-		s += fmt.Sprintf("%s %-20s %s\n", cursor, metric.label, displayVal)
+		trackerContent += fmt.Sprintf("%s%s %s\n",
+			cursor,
+			metricLabelStyle.Render(metric.label),
+			metricValueStyle.Render(displayVal))
 	}
 
 	activeMetric := m.metrics[m.cursor]
-	s += fmt.Sprintf("\nTooltip: %s\n", activeMetric.tooltip)
+	trackerContent += tooltipStyle.Render("Tooltip: "+activeMetric.tooltip) + "\n"
 
 	if m.isInputting {
 		prompt := activeMetric.label
@@ -500,19 +553,15 @@ func (m *model) View() string {
 			steps := []string{"Hours", "Minutes"}
 			prompt = steps[m.inputStep]
 		}
-		s += fmt.Sprintf("\nEnter %s: %s\n", prompt, m.input.View())
-		s += "(press Esc to cancel)\n"
+		trackerContent += fmt.Sprintf("\nEnter %s: %s\n", prompt, m.input.View())
+		trackerContent += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(press Esc to cancel)")
 	} else {
-		s += "\nPress Enter to toggle/edit. Press 't' for Test Mode. Press 'd' for Stats. Press 'a' for Analytics. Press q to quit.\n"
+		trackerContent += "\nPress Enter to toggle/edit. Press 't' for Test Mode. Press 'd' for Stats. Press 'a' for Analytics. Press q to quit."
 	}
 
-	if m.err != nil {
-		s += fmt.Sprintf("\nError: %v\n", m.err)
-	}
-
-	s += "\n---\n"
-	s += "Disclaimer: For personal tracking only. Not medical advice.\n"
-	s += "Read more: https://github.com/bjornramberg/biometrk/\n"
+	s += boxStyle.Render(trackerContent)
+	s += "\n\n"
+	s += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("---\nDisclaimer: For personal tracking only. Not medical advice.\nRead more: https://github.com/bjornramberg/biometrk/")
 
 	return s
 }
