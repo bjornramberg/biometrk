@@ -49,6 +49,7 @@ type model struct {
 	db                *db.DB
 	metrics           []metricDefinition
 	values            map[string]string // metricID -> value
+	yesterdayValues   map[string]string // metricID -> value (from previous day)
 	cursor            int
 	currentDate       time.Time
 	err               error
@@ -215,6 +216,20 @@ func (m *model) loadData() {
 		var mType, val string
 		if err := rows.Scan(&mType, &val); err == nil {
 			m.values[mType] = val
+		}
+	}
+
+	// Fetch yesterday's values for trends
+	yesterdayStr := m.currentDate.AddDate(0, 0, -1).Format("2006-01-02")
+	m.yesterdayValues = make(map[string]string)
+	yRows, err := m.db.Conn.Query(`SELECT metric_type, value FROM metrics WHERE date = ?`, yesterdayStr)
+	if err == nil {
+		defer yRows.Close()
+		for yRows.Next() {
+			var mType, val string
+			if err := yRows.Scan(&mType, &val); err == nil {
+				m.yesterdayValues[mType] = val
+			}
 		}
 	}
 
@@ -560,6 +575,51 @@ func getMetricColor(id, value string) lipgloss.Color {
 	return lipgloss.Color("252")
 }
 
+func getTrendIndicator(id, cur, prev string) string {
+	if cur == "" || prev == "" {
+		return ""
+	}
+
+	var cVal, pVal float64
+
+	switch id {
+	case "bp":
+		// Compare systolic
+		cParts := strings.Split(cur, "/")
+		pParts := strings.Split(prev, "/")
+		if len(cParts) > 0 && len(pParts) > 0 {
+			cVal, _ = strconv.ParseFloat(strings.TrimSpace(cParts[0]), 64)
+			pVal, _ = strconv.ParseFloat(strings.TrimSpace(pParts[0]), 64)
+		}
+	case "sleep":
+		// Compare total hours
+		cParts := strings.Split(cur, ":")
+		pParts := strings.Split(prev, ":")
+		if len(cParts) == 2 && len(pParts) == 2 {
+			ch, _ := strconv.ParseFloat(cParts[0], 64)
+			cm, _ := strconv.ParseFloat(cParts[1], 64)
+			ph, _ := strconv.ParseFloat(pParts[0], 64)
+			pm, _ := strconv.ParseFloat(pParts[1], 64)
+			cVal = ch + (cm / 60.0)
+			pVal = ph + (pm / 60.0)
+		}
+	case "stress", "feel":
+		cVal, _ = strconv.ParseFloat(cur, 64)
+		pVal, _ = strconv.ParseFloat(prev, 64)
+	default:
+		// Toggles/Enums - no simple up/down
+		return ""
+	}
+
+	style := lipgloss.NewStyle()
+	if cVal > pVal {
+		return style.Foreground(lipgloss.Color("240")).Render(" ↑")
+	} else if cVal < pVal {
+		return style.Foreground(lipgloss.Color("240")).Render(" ↓")
+	}
+	return ""
+}
+
 func (m *model) View() string {
 	// 1. MASTER DIMENSIONS
 	totalWidth := m.width - 6
@@ -722,9 +782,13 @@ func (m *model) View() string {
 			
 			// Dynamic Color
 			color := getMetricColor(metric.id, val)
+			
+			// Trend
+			trend := getTrendIndicator(metric.id, val, m.yesterdayValues[metric.id])
+			
 			styledVal := metricValueStyle.Foreground(color).Render(displayVal)
 			
-			listContent += fmt.Sprintf("%s%s %s\n", cursor, metricLabelStyle.Render(metric.label), styledVal)
+			listContent += fmt.Sprintf("%s%s %s%s\n", cursor, metricLabelStyle.Render(metric.label), styledVal, trend)
 		}
 		if m.isInputting {
 			prompt := activeMetric.label

@@ -119,23 +119,14 @@ func (d *DB) SeedDummyData() error {
 	return nil
 }
 
-func (d *DB) GetMetricsByDate(date string) ([]string, error) {
-	query := `SELECT metric_type FROM metrics WHERE date = ?`
-	rows, err := d.Conn.Query(query, date)
-	if err != nil {
-		return nil, err
+func (d *DB) GetMetricValueOnDate(metricType, date string) (string, error) {
+	query := `SELECT value FROM metrics WHERE metric_type = ? AND date = ?`
+	var value string
+	err := d.Conn.QueryRow(query, metricType, date).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil
 	}
-	defer rows.Close()
-
-	var metrics []string
-	for rows.Next() {
-		var metric string
-		if err := rows.Scan(&metric); err != nil {
-			return nil, err
-		}
-		metrics = append(metrics, metric)
-	}
-	return metrics, nil
+	return value, err
 }
 
 func (d *DB) DeleteMetric(metricType, date string) error {
