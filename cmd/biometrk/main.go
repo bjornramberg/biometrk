@@ -106,6 +106,9 @@ type model struct {
 	// Animation state
 	animFrame int
 	isShining bool
+	
+	// Reset confirmation
+	isConfirmingReset bool
 }
 
 func initialModel(d *db.DB) *model {
@@ -321,6 +324,37 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Height = m.height - 15
 	}
 
+	if m.isConfirmingReset {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "enter":
+				if m.input.Value() == "RESET" {
+					if err := m.db.Reset(); err != nil {
+						m.err = err
+					}
+					m.isConfirmingReset = false
+					m.input.Reset()
+					m.loadData()
+					stats, _ := m.db.GetStats()
+					m.dbStats = stats
+					m.saveMsg = "Database Cleared"
+					return m, clearSaveMsg()
+				}
+				// Any other enter just exits if not RESET
+				m.isConfirmingReset = false
+				m.input.Reset()
+				return m, nil
+			case "esc":
+				m.isConfirmingReset = false
+				m.input.Reset()
+				return m, nil
+			}
+		}
+		m.input, cmd = m.input.Update(msg)
+		return m, cmd
+	}
+
 	if m.isInputting {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -442,13 +476,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "r":
 			if m.mode == modeDatabase {
-				if err := m.db.Reset(); err != nil {
-					m.err = err
-				} else {
-					m.loadData()
-					stats, _ := m.db.GetStats()
-					m.dbStats = stats
-				}
+				m.isConfirmingReset = true
+				m.input.Placeholder = "Type RESET to confirm"
+				m.input.Focus()
+				return m, textinput.Blink
 			}
 		case "b":
 			if m.mode == modeDatabase {
@@ -784,23 +815,28 @@ func (m *model) View() string {
 	var content string
 	switch m.mode {
 	case modeDatabase:
-		content = "Database Management\n\n"
+		content = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63")).Render("DATABASE MANAGEMENT") + "\n\n"
+
 		if m.dbStats == nil {
 			content += "Loading stats...\n"
 		} else {
 			sizeStr := fmt.Sprintf("%.2f KB", float64(m.dbStats.Size)/1024)
 			if m.dbStats.Size > 1024*1024 { sizeStr = fmt.Sprintf("%.2f MB", float64(m.dbStats.Size)/(1024*1024)) }
-			content += fmt.Sprintf("Location:       %s\n", m.dbStats.Path)
-			content += fmt.Sprintf("File Size:      %s\n", sizeStr)
-			content += fmt.Sprintf("Total Entries:  %d\n", m.dbStats.TotalEntries)
+
+			// Stats Grid
+			content += fmt.Sprintf("%-15s %s\n", "Location:", m.dbStats.Path)
+			content += fmt.Sprintf("%-15s %s\n", "File Size:", sizeStr)
+			content += fmt.Sprintf("%-15s %d\n", "Total Entries:", m.dbStats.TotalEntries)
+
 			if m.dbStats.TotalEntries > 0 {
-				content += fmt.Sprintf("Date Range:     %s to %s\n", m.dbStats.FirstEntry, m.dbStats.LastEntry)
-				content += fmt.Sprintf("Longest Streak: %d days 🏆\n", m.dbStats.LongestStreak)
+				content += fmt.Sprintf("%-15s %s to %s\n", "Date Range:", m.dbStats.FirstEntry, m.dbStats.LastEntry)
+				content += fmt.Sprintf("%-15s %d days 🏆\n", "Longest Streak:", m.dbStats.LongestStreak)
 			}
+
 			if len(m.backups) > 0 {
-				content += "\nAvailable Backups:\n"
+				content += "\n" + lipgloss.NewStyle().Bold(true).Render("Recent Backups:") + "\n"
 				for i, b := range m.backups {
-					if i >= 5 { content += " ...\n"; break }
+					if i >= 3 { break } // Only show last 3 to keep it neat
 					content += fmt.Sprintf(" • %s\n", filepath.Base(b))
 				}
 			}
@@ -808,8 +844,18 @@ func (m *model) View() string {
 			if m.exportMsg != "" {
 				content += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true).Render("✔ "+m.exportMsg) + "\n"
 			}
+
+			content += "\n" + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")).Render("DANGER ZONE") + "\n"
+			if m.isConfirmingReset {
+				content += lipgloss.NewStyle().Background(lipgloss.Color("196")).Foreground(lipgloss.Color("255")).Padding(0, 1).Render(" CONFIRM RESET ") + "\n"
+				content += "To delete ALL data, type 'RESET' and press Enter:\n"
+				content += m.input.View() + "\n"
+				content += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(press Esc to cancel)")
+			} else {
+				content += "Press 'r' to initiate database reset."
+			}
 		}
-		content += "\nPress 'b' to BACKUP. Press 'R' to RESTORE. Press 'e' to CSV. Press 'm' to MARKDOWN. Press 'r' to RESET. Press 'd' or 'q' to return."
+
 
 	case modeAnalytics:
 		// Calculate the date at the cursor
@@ -983,9 +1029,16 @@ func (m *model) View() string {
 		menuItems = append(menuItems, keyStyle.Render("1-3") + " interval") 
 	}
 	if m.mode == modeDatabase { 
-		menuItems = append(menuItems, keyStyle.Render("b")+" backup", keyStyle.Render("R")+" restore", keyStyle.Render("r")+" reset") 
+		menuItems = append(menuItems, keyStyle.Render("b")+" backup", keyStyle.Render("R")+" restore", keyStyle.Render("e")+" csv", keyStyle.Render("m")+" md", keyStyle.Render("r")+" reset") 
 	}
+
 	menuBar := menuStyle.Render(strings.Join(menuItems, "  •  "))
+	if lipgloss.Width(menuBar) > totalWidth {
+		// If too wide, use a more compact multi-line layout
+		row1 := strings.Join(menuItems[:len(menuItems)/2], "  •  ")
+		row2 := strings.Join(menuItems[len(menuItems)/2:], "  •  ")
+		menuBar = menuStyle.Render(row1 + "\n " + row2)
+	}
 
 	// Size the content block perfectly to fit INSIDE the borders
 	placedMain := lipgloss.Place(totalWidth-2, totalHeight-2, lipgloss.Left, lipgloss.Top, content)
