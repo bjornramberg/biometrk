@@ -673,6 +673,8 @@ func (m *model) View() string {
 	infoContent := ""
 	if m.db.IsEphemeral {
 		infoContent += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Render("[TEST MODE]") + "\n"
+	} else {
+		infoContent += lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true).Render("● DB Connected") + "\n"
 	}
 	infoContent += fmt.Sprintf("Date: %s\n", dateStyle.Render(dateStr))
 	infoContent += fmt.Sprintf("Streak: %s\n", streakStyle.Render(fmt.Sprintf("%d days 🔥", m.streak)))
