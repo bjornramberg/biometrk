@@ -28,6 +28,7 @@ const (
 type metricDefinition struct {
 	id          string
 	label       string
+	group       string
 	tooltip     string
 	guidance    string
 	source      string
@@ -86,6 +87,7 @@ func initialModel(d *db.DB) *model {
 			{
 				id:       "bp",
 				label:    "Blood Pressure",
+				group:    "VITALS",
 				tooltip:  "Guided entry: Systolic, Diastolic, then Pulse",
 				guidance: "AHA Categories:\n • Normal: <120 / <80 mmHg\n • Elevated: 120-129 / <80 mmHg\n • Stage 1 Hypertension: 130-139 / 80-89 mmHg",
 				source:   "American Heart Association (AHA)",
@@ -95,27 +97,19 @@ func initialModel(d *db.DB) *model {
 					return err == nil && val > 0 && val < 300
 				},
 			},
-
 			{
-				id:       "alcohol",
-				label:    "Alcohol Intake",
-				tooltip:  "Did you drink alcohol today?",
-				guidance: "Moderate intake is defined as:\n • Women: Up to 1 drink/day\n • Men: Up to 2 drinks/day\nRisk of health issues increases with any consumption.",
-				source:   "WHO / Dietary Guidelines for Americans",
+				id:       "training",
+				label:    "Training",
+				group:    "ACTIVITY",
+				tooltip:  "Walk > 30 min OR high pulse training > 30 min",
+				guidance: "Aim for at least 150 min of moderate activity per week.",
+				source:   "WHO / CDC",
 				mType:    typeToggle,
-			},
-			{
-				id:       "hydration",
-				label:    "Hydration",
-				tooltip:  "Target is 'Normal' hydration",
-				guidance: "Aim for 'Normal' (roughly 2-3 liters of total fluids for most adults).",
-				source:   "Mayo Clinic",
-				mType:    typeEnum,
-				options:  []string{"Low", "Normal"},
 			},
 			{
 				id:       "sleep",
 				label:    "Sleep Duration",
+				group:    "ACTIVITY",
 				tooltip:  "Guided entry: Hours then Minutes",
 				guidance: "Most adults should aim for 7–9 hours of quality sleep per night.",
 				source:   "National Sleep Foundation",
@@ -126,16 +120,28 @@ func initialModel(d *db.DB) *model {
 				},
 			},
 			{
-				id:       "training",
-				label:    "Training",
-				tooltip:  "Walk > 30 min OR high pulse training > 30 min",
-				guidance: "Aim for at least 150 min of moderate activity per week.",
-				source:   "WHO / CDC",
+				id:       "hydration",
+				label:    "Hydration",
+				group:    "CONSUMPTION",
+				tooltip:  "Target is 'Normal' hydration",
+				guidance: "Aim for 'Normal' (roughly 2-3 liters of total fluids for most adults).",
+				source:   "Mayo Clinic",
+				mType:    typeEnum,
+				options:  []string{"Low", "Normal"},
+			},
+			{
+				id:       "alcohol",
+				label:    "Alcohol Intake",
+				group:    "CONSUMPTION",
+				tooltip:  "Did you drink alcohol today?",
+				guidance: "Moderate intake is defined as:\n • Women: Up to 1 drink/day\n • Men: Up to 2 drinks/day\nRisk of health issues increases with any consumption.",
+				source:   "WHO / Dietary Guidelines for Americans",
 				mType:    typeToggle,
 			},
 			{
 				id:       "stress",
 				label:    "Stress Level",
+				group:    "MINDSET",
 				tooltip:  "Perceived stress (1-5, 1=lowest)",
 				guidance: "Chronic high stress impacts both mental and physical health.",
 				source:   "Mental Health America",
@@ -148,8 +154,9 @@ func initialModel(d *db.DB) *model {
 			{
 				id:       "feel",
 				label:    "Overall Feel",
+				group:    "MINDSET",
 				tooltip:  "Perceived wellbeing (1-5, 1=lowest)",
-				guidance: "Tracking subjective feel can help identify long-term wellness trends.",
+				guidance: "Tracking subjective feel can help identify long-long wellness trends.",
 				source:   "Biometrk Wellness Tracking",
 				mType:    typeRating,
 				validate: func(s string) bool {
@@ -778,8 +785,23 @@ func (m *model) View() string {
 
 	default: // modeTracker
 		activeMetric := m.metrics[m.cursor]
+		
+		// Left column: Metrics List
 		listContent := ""
+		lastGroup := ""
 		for i, metric := range m.metrics {
+			// Add section headers
+			if metric.group != lastGroup {
+				headerStyle := lipgloss.NewStyle().
+					Foreground(lipgloss.Color("240")).
+					Bold(true)
+				if lastGroup != "" {
+					listContent += "\n" // Space between groups
+				}
+				listContent += headerStyle.Render(" "+metric.group) + "\n"
+				lastGroup = metric.group
+			}
+
 			cursor := "  "; if m.cursor == i { cursor = "> " }
 			val := m.values[metric.id]
 			displayVal := "[ ]"
@@ -795,9 +817,19 @@ func (m *model) View() string {
 			// Trend
 			trend := getTrendIndicator(metric.id, val, m.yesterdayValues[metric.id])
 			
+			// Use a fixed width for the value display to ensure arrows align
 			styledVal := metricValueStyle.Foreground(color).Render(displayVal)
+			// Pad the styled value manually to ensure consistent arrow placement
+			valWidth := lipgloss.Width(styledVal)
+			padding := 15 - valWidth
+			if padding < 0 { padding = 0 }
 			
-			listContent += fmt.Sprintf("%s%s %s%s\n", cursor, metricLabelStyle.Render(metric.label), styledVal, trend)
+			listContent += fmt.Sprintf("%s%s %s%s%s\n", 
+				cursor, 
+				metricLabelStyle.Render(metric.label), 
+				styledVal, 
+				strings.Repeat(" ", padding),
+				trend)
 		}
 		if m.isInputting {
 			prompt := activeMetric.label
