@@ -684,7 +684,12 @@ func (m *model) View() string {
 	placedInfo := lipgloss.Place(infoBoxOuterWidth-2, 4, lipgloss.Left, lipgloss.Top, infoContent)
 	infoBox := infoBorderStyle.Render(placedInfo)
 
-	header := lipgloss.JoinHorizontal(lipgloss.Top, logo, "  ", infoBox) + "\n\n"
+	header := lipgloss.JoinHorizontal(lipgloss.Top, logo, "  ", infoBox) + "\n"
+	
+	disclaimerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true).MarginBottom(1)
+	disclaimer := disclaimerStyle.Render("Disclaimer: For personal tracking only. Not medical advice.")
+	
+	header += disclaimer + "\n"
 
 	// 4. MAIN CONTENT ASSEMBLY
 	var content string
@@ -893,13 +898,11 @@ func (m *model) View() string {
 	}
 	menuBar := menuStyle.Render(strings.Join(menuItems, "  •  "))
 
-	disclaimer := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Disclaimer: For personal tracking only. Not medical advice. Read more: https://github.com/bjornramberg/biometrk/")
-
 	// Size the content block perfectly to fit INSIDE the borders
 	placedMain := lipgloss.Place(totalWidth-2, totalHeight-2, lipgloss.Left, lipgloss.Top, content)
 	mainBox := mainBorderStyle.Render(placedMain)
 
-	return header + mainBox + "\n" + menuBar + "\n" + disclaimer
+	return header + mainBox + "\n" + menuBar
 }
 
 func main() {
