@@ -539,74 +539,11 @@ func getMetricColor(id, value string) lipgloss.Color {
 		return lipgloss.Color("252") // Default gray
 	}
 
-	switch id {
-	case "bp":
-		// Format: systolic/diastolic - pulse
-		parts := strings.Split(value, "/")
-		if len(parts) < 2 {
-			return lipgloss.Color("252")
-		}
-		sys, _ := strconv.Atoi(strings.TrimSpace(parts[0]))
-		diaParts := strings.Split(parts[1], "-")
-		dia, _ := strconv.Atoi(strings.TrimSpace(diaParts[0]))
-
-		if sys < 120 && dia < 80 {
-			return lipgloss.Color("42") // Green
-		}
-		if sys < 130 && dia < 80 {
-			return lipgloss.Color("220") // Yellow
-		}
-		return lipgloss.Color("196") // Red
-
-	case "sleep":
-		// Format: HH:MM
-		parts := strings.Split(value, ":")
-		if len(parts) < 2 {
-			return lipgloss.Color("252")
-		}
-		h, _ := strconv.Atoi(parts[0])
-		if h >= 7 && h <= 9 {
-			return lipgloss.Color("42") // Green
-		}
-		if h == 6 || h == 10 {
-			return lipgloss.Color("220") // Yellow
-		}
-		return lipgloss.Color("196") // Red
-
-	case "stress":
-		val, _ := strconv.Atoi(value)
-		if val <= 2 {
-			return lipgloss.Color("42") // Green
-		}
-		if val == 3 {
-			return lipgloss.Color("220") // Yellow
-		}
-		return lipgloss.Color("196") // Red
-
-	case "feel":
-		val, _ := strconv.Atoi(value)
-		if val >= 4 {
-			return lipgloss.Color("42") // Green
-		}
-		if val == 3 {
-			return lipgloss.Color("220") // Yellow
-		}
-		return lipgloss.Color("196") // Red
-
-	case "alcohol":
-		if value == "true" {
-			return lipgloss.Color("208") // Orange/Warning
-		}
-		return lipgloss.Color("42") // Green (No alcohol)
-
-	case "hydration", "training":
-		if value == "true" || value == "Normal" {
-			return lipgloss.Color("42") // Green
-		}
-		return lipgloss.Color("220") // Yellow
+	if id == "alcohol" && value == "true" {
+		return lipgloss.Color("208") // Warning orange
 	}
 
-	return lipgloss.Color("252")
+	return lipgloss.Color("252") // Keep text readable
 }
 
 func getTrendIndicator(id, cur, prev string) string {
@@ -626,7 +563,6 @@ func getTrendIndicator(id, cur, prev string) string {
 			pVal, _ = strconv.ParseFloat(strings.TrimSpace(pParts[0]), 64)
 		}
 	case "sleep":
-		// Compare total hours
 		cParts := strings.Split(cur, ":")
 		pParts := strings.Split(prev, ":")
 		if len(cParts) == 2 && len(pParts) == 2 {
@@ -641,17 +577,31 @@ func getTrendIndicator(id, cur, prev string) string {
 		cVal, _ = strconv.ParseFloat(cur, 64)
 		pVal, _ = strconv.ParseFloat(prev, 64)
 	default:
-		// Toggles/Enums - no simple up/down
 		return ""
 	}
 
-	style := lipgloss.NewStyle()
-	if cVal > pVal {
-		return style.Foreground(lipgloss.Color("240")).Render(" ↑")
-	} else if cVal < pVal {
-		return style.Foreground(lipgloss.Color("240")).Render(" ↓")
+	if cVal == pVal {
+		return ""
 	}
-	return ""
+
+	better := false
+	if id == "bp" || id == "stress" || id == "alcohol" {
+		better = cVal < pVal
+	} else {
+		better = cVal > pVal
+	}
+
+	arrow := " ↑"
+	if cVal < pVal {
+		arrow = " ↓"
+	}
+
+	color := "196" // Red (Worse)
+	if better {
+		color = "42" // Green (Better)
+	}
+
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(arrow)
 }
 
 func (m *model) View() string {
