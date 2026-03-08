@@ -48,6 +48,13 @@ const (
 )
 
 type tickMsg time.Time
+type saveMsg string
+
+func clearSaveMsg() tea.Cmd {
+	return tea.Tick(time.Second*3, func(t time.Time) tea.Msg {
+		return saveMsg("")
+	})
+}
 
 func firstTick() tea.Cmd {
 	return tea.Tick(time.Second*10, func(t time.Time) tea.Msg {
@@ -78,6 +85,7 @@ type model struct {
 	currentDate       time.Time
 	err               error
 	exportMsg         string
+	saveMsg           string
 	input             textinput.Model
 	isInputting       bool
 	inputStep         int
@@ -290,6 +298,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case saveMsg:
+		m.saveMsg = string(msg)
+		return m, nil
 	case tickMsg:
 		m.isShining = true
 		m.animFrame = 0
@@ -357,7 +368,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.db.DeleteMetric(metric.id, dateStr)
 				m.db.LogMetric(metric.id, finalVal, dateStr)
 				m.loadData() // Refresh streak and values
-				return m, nil
+				m.saveMsg = "Saved"
+				return m, clearSaveMsg()
 			case "esc":
 				m.isInputting = false
 				m.inputStep = 0
@@ -553,6 +565,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.db.LogMetric(metric.id, "true", dateStr)
 				}
 				m.loadData()
+				m.saveMsg = "Saved"
+				return m, clearSaveMsg()
 			case typeInput, typeRating:
 				m.isInputting = true
 				m.input.Placeholder = metric.placeholder
@@ -574,6 +588,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.db.DeleteMetric(metric.id, dateStr)
 				m.db.LogMetric(metric.id, next, dateStr)
 				m.loadData()
+				m.saveMsg = "Saved"
+				return m, clearSaveMsg()
 			}
 		}
 	}
@@ -739,7 +755,11 @@ func (m *model) View() string {
 	if m.db.IsEphemeral {
 		infoContent += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Render("[TEST MODE]") + "\n"
 	} else {
-		infoContent += lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true).Render("● DB Connected") + "\n"
+		status := lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true).Render("● DB Connected")
+		if m.saveMsg != "" {
+			status = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true).Render("✔ "+m.saveMsg)
+		}
+		infoContent += status + "\n"
 	}
 	infoContent += fmt.Sprintf("Date: %s\n", dateStyle.Render(dateStr))
 	infoContent += fmt.Sprintf("Streak: %s\n", streakStyle.Render(fmt.Sprintf("%d days 🔥", m.streak)))
