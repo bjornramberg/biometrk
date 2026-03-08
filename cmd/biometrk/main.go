@@ -712,12 +712,13 @@ func (m *model) View() string {
 				if i >= m.animFrame && i < m.animFrame+5 {
 					styledLine += shineStyle.Render(string(char))
 				} else {
-					styledLine += string(char)
+					// Ensure non-glint chars keep the base header color
+					styledLine += headerStyle.Render(string(char))
 				}
 			}
 			styledLines = append(styledLines, styledLine)
 		}
-		renderedLogo = headerStyle.Render(strings.Join(styledLines, "\n"))
+		renderedLogo = strings.Join(styledLines, "\n")
 	} else {
 		renderedLogo = headerStyle.Render(ascii)
 	}
