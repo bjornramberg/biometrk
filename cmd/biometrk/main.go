@@ -754,13 +754,32 @@ func (m *model) View() string {
 	// 5. FINAL ASSEMBLY
 	menuStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("236")).Padding(0, 1).MarginTop(1)
 	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-	menuItems := []string{
-		keyStyle.Render("enter") + " edit", keyStyle.Render("t") + " test mode",
-		keyStyle.Render("d") + " database", keyStyle.Render("a") + " analytics",
-		keyStyle.Render("i") + " insights", keyStyle.Render("q") + " quit",
+	activeKeyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FAFAFA")).Background(lipgloss.Color("205")).Padding(0, 1).Bold(true)
+	
+	// Helper to style menu items based on active mode
+	renderMenuItem := func(key, label string, mode viewMode) string {
+		if m.mode == mode {
+			return activeKeyStyle.Render(key) + " " + label
+		}
+		return keyStyle.Render(key) + " " + label
 	}
-	if m.mode == modeAnalytics || m.mode == modeInsights { menuItems = append(menuItems, keyStyle.Render("1-3") + " interval") }
-	if m.mode == modeDatabase { menuItems = append(menuItems, keyStyle.Render("b")+" backup", keyStyle.Render("R")+" restore", keyStyle.Render("e")+" csv", keyStyle.Render("m")+" md", keyStyle.Render("r")+" reset") }
+
+	menuItems := []string{
+		keyStyle.Render("enter") + " edit", // Edit is a global action
+		renderMenuItem("t", "test mode", -1), // Toggle, not a mode
+		renderMenuItem("d", "database", modeDatabase),
+		renderMenuItem("a", "analytics", modeAnalytics),
+		renderMenuItem("i", "insights", modeInsights),
+		keyStyle.Render("q") + " quit",
+	}
+	
+	// Re-add context-specific keys with appropriate styling
+	if m.mode == modeAnalytics || m.mode == modeInsights { 
+		menuItems = append(menuItems, keyStyle.Render("1-3") + " interval") 
+	}
+	if m.mode == modeDatabase { 
+		menuItems = append(menuItems, keyStyle.Render("b")+" backup", keyStyle.Render("R")+" restore", keyStyle.Render("r")+" reset") 
+	}
 	menuBar := menuStyle.Render(strings.Join(menuItems, "  •  "))
 
 	disclaimer := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Disclaimer: For personal tracking only. Not medical advice. Read more: https://github.com/bjornramberg/biometrk/")
