@@ -10,6 +10,7 @@ import (
 
 	"github.com/bjornramberg/biometrk/internal/db"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/guptarohit/asciigraph"
@@ -69,6 +70,7 @@ type model struct {
 	laggedInsights    []db.Insight
 	width             int
 	height            int
+	viewport          viewport.Model
 }
 
 func initialModel(d *db.DB) *model {
@@ -161,6 +163,7 @@ func initialModel(d *db.DB) *model {
 		input:             ti,
 		analyticsInterval: 7,
 		analyticsCursor:   6, // Latest day
+		viewport:          viewport.New(0, 0),
 	}
 	m.loadData()
 	return m
@@ -249,10 +252,16 @@ func (m *model) Init() tea.Cmd {
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var (
+		cmd  tea.Cmd
+	)
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.viewport.Width = m.width - 6
+		m.viewport.Height = m.height - 15
 	}
 
 	if m.isInputting {
@@ -447,10 +456,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "up", "k":
+			if m.mode == modeAnalytics || m.mode == modeInsights {
+				m.viewport, cmd = m.viewport.Update(msg)
+				return m, cmd
+			}
 			if m.cursor > 0 {
 				m.cursor--
 			}
 		case "down", "j":
+			if m.mode == modeAnalytics || m.mode == modeInsights {
+				m.viewport, cmd = m.viewport.Update(msg)
+				return m, cmd
+			}
 			if m.cursor < len(m.metrics)-1 {
 				m.cursor++
 			}
@@ -746,7 +763,7 @@ func (m *model) View() string {
 		cursorDate := time.Now().AddDate(0, 0, -m.analyticsInterval+1+m.analyticsCursor)
 		cursorDateStr := cursorDate.Format("2006-01-02")
 		
-		content = fmt.Sprintf("Analytics - Last %d Days    Selected: %s\n\n", m.analyticsInterval, lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true).Render(cursorDateStr))
+		analyticContent := fmt.Sprintf("Analytics - Last %d Days    Selected: %s\n\n", m.analyticsInterval, lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true).Render(cursorDateStr))
 		
 		chartWidth := (totalWidth - 20) / 2
 		if chartWidth < 20 { chartWidth = 20 }
@@ -789,19 +806,25 @@ func (m *model) View() string {
 			for i := 0; i < len(graphs); i += 2 {
 				if i+1 < len(graphs) { rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, graphs[i], "    ", graphs[i+1])) } else { rows = append(rows, graphs[i]) }
 			}
-			content += strings.Join(rows, "\n\n")
-		} else { content += strings.Join(graphs, "\n\n") }
+			analyticContent += strings.Join(rows, "\n\n")
+		} else { analyticContent += strings.Join(graphs, "\n\n") }
+		
+		m.viewport.SetContent(analyticContent)
+		content = m.viewport.View()
 
 	case modeInsights:
-		content = fmt.Sprintf("Lifestyle Insights - Last %d Days\n\n", m.analyticsInterval)
-		content += "Direct Correlations:\n"
+		insightContent := fmt.Sprintf("Lifestyle Insights - Last %d Days\n\n", m.analyticsInterval)
+		insightContent += "Direct Correlations:\n"
 		if len(m.analyticsInsights) > 0 {
-			for _, insight := range m.analyticsInsights { content += fmt.Sprintf(" • %s\n", insight.Text) }
-		} else { content += " No strong correlations found yet.\n" }
-		content += "\nLead/Lag (Yesterday vs Today):\n"
+			for _, insight := range m.analyticsInsights { insightContent += fmt.Sprintf(" • %s\n", insight.Text) }
+		} else { insightContent += " No strong correlations found yet.\n" }
+		insightContent += "\nLead/Lag (Yesterday vs Today):\n"
 		if len(m.laggedInsights) > 0 {
-			for _, insight := range m.laggedInsights { content += fmt.Sprintf(" • %s\n", insight.Text) }
-		} else { content += " No significant patterns detected.\n" }
+			for _, insight := range m.laggedInsights { insightContent += fmt.Sprintf(" • %s\n", insight.Text) }
+		} else { insightContent += " No significant patterns detected.\n" }
+		
+		m.viewport.SetContent(insightContent)
+		content = m.viewport.View()
 
 	default: // modeTracker
 		activeMetric := m.metrics[m.cursor]
@@ -873,11 +896,12 @@ func (m *model) View() string {
 		keyStyle.Render("q") + " quit",
 	}
 	
-	// Re-add context-specific keys with appropriate styling
+	// Add context-specific keys
 	if m.mode == modeAnalytics {
 		menuItems = append(menuItems, keyStyle.Render("←/→")+" scrub")
 	}
 	if m.mode == modeAnalytics || m.mode == modeInsights { 
+		menuItems = append(menuItems, keyStyle.Render("↑/↓")+" scroll")
 		menuItems = append(menuItems, keyStyle.Render("1-3") + " interval") 
 	}
 	if m.mode == modeDatabase { 
