@@ -65,6 +65,7 @@ type model struct {
 	analyticsInterval int // 7, 30, 90
 	analyticsData     map[string][]float64
 	analyticsInsights []db.Insight
+	analyticsCursor   int // 0 to (interval-1)
 	laggedInsights    []db.Insight
 	width             int
 	height            int
@@ -159,6 +160,7 @@ func initialModel(d *db.DB) *model {
 		currentDate:       today,
 		input:             ti,
 		analyticsInterval: 7,
+		analyticsCursor:   6, // Latest day
 	}
 	m.loadData()
 	return m
@@ -343,16 +345,19 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "1":
 			if m.mode == modeAnalytics || m.mode == modeInsights {
 				m.analyticsInterval = 7
+				m.analyticsCursor = 6
 				m.loadAnalytics()
 			}
 		case "2":
 			if m.mode == modeAnalytics || m.mode == modeInsights {
 				m.analyticsInterval = 30
+				m.analyticsCursor = 29
 				m.loadAnalytics()
 			}
 		case "3":
 			if m.mode == modeAnalytics || m.mode == modeInsights {
 				m.analyticsInterval = 90
+				m.analyticsCursor = 89
 				m.loadAnalytics()
 			}
 		case "d":
@@ -450,14 +455,26 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		case "left", "h":
-			m.currentDate = m.currentDate.AddDate(0, 0, -1)
-			m.loadData()
-		case "right", "l":
-			now := time.Now()
-			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-			if m.currentDate.Before(today) {
-				m.currentDate = m.currentDate.AddDate(0, 0, 1)
+			if m.mode == modeAnalytics {
+				if m.analyticsCursor > 0 {
+					m.analyticsCursor--
+				}
+			} else {
+				m.currentDate = m.currentDate.AddDate(0, 0, -1)
 				m.loadData()
+			}
+		case "right", "l":
+			if m.mode == modeAnalytics {
+				if m.analyticsCursor < m.analyticsInterval-1 {
+					m.analyticsCursor++
+				}
+			} else {
+				now := time.Now()
+				today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+				if m.currentDate.Before(today) {
+					m.currentDate = m.currentDate.AddDate(0, 0, 1)
+					m.loadData()
+				}
 			}
 		case "enter", " ":
 			metric := m.metrics[m.cursor]
@@ -725,7 +742,12 @@ func (m *model) View() string {
 		content += "\nPress 'b' to BACKUP. Press 'R' to RESTORE. Press 'e' to CSV. Press 'm' to MARKDOWN. Press 'r' to RESET. Press 'd' or 'q' to return."
 
 	case modeAnalytics:
-		content = fmt.Sprintf("Analytics - Last %d Days\n\n", m.analyticsInterval)
+		// Calculate the date at the cursor
+		cursorDate := time.Now().AddDate(0, 0, -m.analyticsInterval+1+m.analyticsCursor)
+		cursorDateStr := cursorDate.Format("2006-01-02")
+		
+		content = fmt.Sprintf("Analytics - Last %d Days    Selected: %s\n\n", m.analyticsInterval, lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true).Render(cursorDateStr))
+		
 		chartWidth := (totalWidth - 20) / 2
 		if chartWidth < 20 { chartWidth = 20 }
 		if chartWidth > 60 { chartWidth = 60 }
@@ -734,7 +756,21 @@ func (m *model) View() string {
 		for _, metric := range m.metrics {
 			data := m.analyticsData[metric.id]
 			if len(data) < 2 { data = []float64{0, 0} }
-			graphContent := fmt.Sprintf("%s:\n", metric.label)
+
+			// Value at cursor
+			curVal := 0.0
+			if m.analyticsCursor < len(data) { curVal = data[m.analyticsCursor] }
+			
+			displayVal := fmt.Sprintf("%.1f", curVal)
+			if metric.mType == typeToggle || metric.id == "hydration" {
+				if curVal >= 1.0 { displayVal = "Yes/Normal" } else { displayVal = "No/Low" }
+			} else if metric.id == "sleep" {
+				h := int(curVal)
+				m := int((curVal - float64(h)) * 60)
+				displayVal = fmt.Sprintf("%02dh %02dm", h, m)
+			}
+
+			graphContent := fmt.Sprintf("%s: %s\n", metric.label, lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true).Render(displayVal))
 			g := asciigraph.Plot(data, asciigraph.Height(5), asciigraph.Width(chartWidth), asciigraph.Precision(1))
 			graphContent += g
 			
@@ -838,6 +874,9 @@ func (m *model) View() string {
 	}
 	
 	// Re-add context-specific keys with appropriate styling
+	if m.mode == modeAnalytics {
+		menuItems = append(menuItems, keyStyle.Render("←/→")+" scrub")
+	}
 	if m.mode == modeAnalytics || m.mode == modeInsights { 
 		menuItems = append(menuItems, keyStyle.Render("1-3") + " interval") 
 	}
