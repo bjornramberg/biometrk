@@ -686,7 +686,11 @@ func (m *model) View() string {
 
 	header := lipgloss.JoinHorizontal(lipgloss.Top, logo, "  ", infoBox) + "\n"
 	
-	disclaimerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true).MarginBottom(1)
+	disclaimerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Italic(true).
+		MarginBottom(1).
+		PaddingLeft(3)
 	disclaimer := disclaimerStyle.Render("Disclaimer: For personal tracking only. Not medical advice.")
 	
 	header += disclaimer + "\n"
