@@ -134,8 +134,8 @@ func initialModel(d *db.DB) *model {
 				label:    "Alcohol Intake",
 				group:    "CONSUMPTION",
 				tooltip:  "Mark if you have consumed any alcoholic beverages today.",
-				guidance: "Moderate intake is defined as:\n • Women: Up to 1 drink/day\n • Men: Up to 2 drinks/day\nRecommendations vary by country. Any intake is associated with higher risks than none.",
-				source:   "WHO / Dietary Guidelines for Americans",
+				guidance: "Any alcohol intake is associated with higher health risks than none at all. Recommendations vary significantly by country.",
+				source:   "WHO / Dietary Guidelines",
 				mType:    typeToggle,
 			},
 			{
