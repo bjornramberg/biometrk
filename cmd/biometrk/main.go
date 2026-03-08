@@ -485,6 +485,81 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func getMetricColor(id, value string) lipgloss.Color {
+	if value == "" || value == "false" {
+		return lipgloss.Color("252") // Default gray
+	}
+
+	switch id {
+	case "bp":
+		// Format: systolic/diastolic - pulse
+		parts := strings.Split(value, "/")
+		if len(parts) < 2 {
+			return lipgloss.Color("252")
+		}
+		sys, _ := strconv.Atoi(strings.TrimSpace(parts[0]))
+		diaParts := strings.Split(parts[1], "-")
+		dia, _ := strconv.Atoi(strings.TrimSpace(diaParts[0]))
+
+		if sys < 120 && dia < 80 {
+			return lipgloss.Color("42") // Green
+		}
+		if sys < 130 && dia < 80 {
+			return lipgloss.Color("220") // Yellow
+		}
+		return lipgloss.Color("196") // Red
+
+	case "sleep":
+		// Format: HH:MM
+		parts := strings.Split(value, ":")
+		if len(parts) < 2 {
+			return lipgloss.Color("252")
+		}
+		h, _ := strconv.Atoi(parts[0])
+		if h >= 7 && h <= 9 {
+			return lipgloss.Color("42") // Green
+		}
+		if h == 6 || h == 10 {
+			return lipgloss.Color("220") // Yellow
+		}
+		return lipgloss.Color("196") // Red
+
+	case "stress":
+		val, _ := strconv.Atoi(value)
+		if val <= 2 {
+			return lipgloss.Color("42") // Green
+		}
+		if val == 3 {
+			return lipgloss.Color("220") // Yellow
+		}
+		return lipgloss.Color("196") // Red
+
+	case "feel":
+		val, _ := strconv.Atoi(value)
+		if val >= 4 {
+			return lipgloss.Color("42") // Green
+		}
+		if val == 3 {
+			return lipgloss.Color("220") // Yellow
+		}
+		return lipgloss.Color("196") // Red
+
+	case "alcohol":
+		if value == "true" {
+			return lipgloss.Color("208") // Orange/Warning
+		}
+		return lipgloss.Color("42") // Green (No alcohol)
+
+	case "hydration", "training":
+		if value == "true" || value == "Normal" {
+			return lipgloss.Color("42") // Green
+		}
+		return lipgloss.Color("220") // Yellow
+	}
+
+	return lipgloss.Color("252")
+}
+
 func (m *model) View() string {
 	// 1. MASTER DIMENSIONS
 	totalWidth := m.width - 6
@@ -498,12 +573,14 @@ func (m *model) View() string {
 	var (
 		headerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 		dateStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).MarginLeft(2)
-		streakStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).MarginLeft(2)
-		
-		metricLabelStyle = lipgloss.NewStyle().Width(25).Foreground(lipgloss.Color("252"))
-		metricValueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-		
-		// Border Styles (No Width/Height set here to prevent breaking)
+		streakStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("214")).
+				MarginLeft(2)
+
+		metricLabelStyle = lipgloss.NewStyle(). Width(25). Foreground(lipgloss.Color("252"))
+		metricValueStyle = lipgloss.NewStyle()
+
+		// mainBorderStyle (No Width/Height set here to prevent breaking)
 		mainBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("62")).
@@ -514,6 +591,14 @@ func (m *model) View() string {
 				BorderForeground(lipgloss.Color("62")).
 				Padding(0, 1)
 	)
+
+	// Apply dynamic streak style
+	if m.streak >= 7 {
+		streakStyle = streakStyle.Foreground(lipgloss.Color("208"))
+	}
+	if m.streak >= 30 {
+		streakStyle = streakStyle.Foreground(lipgloss.Color("196")).Bold(true)
+	}
 
 	// 3. HEADER ASSEMBLY
 	ascii := ` ______     __     ______     __    __     ______     ______   ______     __  __    
@@ -627,9 +712,19 @@ func (m *model) View() string {
 		listContent := ""
 		for i, metric := range m.metrics {
 			cursor := "  "; if m.cursor == i { cursor = "> " }
-			val := m.values[metric.id]; displayVal := "[ ]"
-			if val == "true" { displayVal = "[x]" } else if val != "" && val != "false" { displayVal = fmt.Sprintf("[%s]", val) }
-			listContent += fmt.Sprintf("%s%s %s\n", cursor, metricLabelStyle.Render(metric.label), metricValueStyle.Render(displayVal))
+			val := m.values[metric.id]
+			displayVal := "[ ]"
+			if val == "true" { 
+				displayVal = "[x]" 
+			} else if val != "" && val != "false" { 
+				displayVal = fmt.Sprintf("[%s]", val) 
+			}
+			
+			// Dynamic Color
+			color := getMetricColor(metric.id, val)
+			styledVal := metricValueStyle.Foreground(color).Render(displayVal)
+			
+			listContent += fmt.Sprintf("%s%s %s\n", cursor, metricLabelStyle.Render(metric.label), styledVal)
 		}
 		if m.isInputting {
 			prompt := activeMetric.label
