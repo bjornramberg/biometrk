@@ -49,6 +49,12 @@ const (
 
 type tickMsg time.Time
 
+func firstTick() tea.Cmd {
+	return tea.Tick(time.Second*10, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
 func tick() tea.Cmd {
 	return tea.Tick(time.Second*60, func(t time.Time) tea.Msg {
 		return tickMsg(t)
@@ -275,7 +281,7 @@ func (m *model) loadData() {
 }
 
 func (m *model) Init() tea.Cmd {
-	return tick()
+	return firstTick()
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
