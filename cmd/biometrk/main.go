@@ -47,6 +47,22 @@ const (
 	modeInsights
 )
 
+type tickMsg time.Time
+
+func tick() tea.Cmd {
+	return tea.Tick(time.Second*60, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+func animTick() tea.Cmd {
+	return tea.Tick(time.Millisecond*50, func(t time.Time) tea.Msg {
+		return frameMsg(t)
+	})
+}
+
+type frameMsg time.Time
+
 type model struct {
 	db                *db.DB
 	metrics           []metricDefinition
@@ -72,6 +88,10 @@ type model struct {
 	width             int
 	height            int
 	viewport          viewport.Model
+	
+	// Animation state
+	animFrame int
+	isShining bool
 }
 
 func initialModel(d *db.DB) *model {
@@ -255,7 +275,7 @@ func (m *model) loadData() {
 }
 
 func (m *model) Init() tea.Cmd {
-	return nil
+	return tick()
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -264,6 +284,19 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case tickMsg:
+		m.isShining = true
+		m.animFrame = 0
+		return m, animTick()
+	case frameMsg:
+		if m.isShining {
+			m.animFrame++
+			if m.animFrame > 90 { // Logo is ~80 chars wide
+				m.isShining = false
+				return m, tick()
+			}
+			return m, animTick()
+		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -658,7 +691,32 @@ func (m *model) View() string {
  \ \_____\  \ \_\  \ \_____\  \ \_\ \ \_\  \ \_____\    \ \_\  \ \_\ \_\  \ \_\ \_\ 
   \/_____/   \/_/   \/_____/   \/_/  \/_/   \/_____/     \/_/   \/_/ /_/   \/_/\/_/`
 	ascii = strings.TrimPrefix(ascii, "\n")
-	logo := headerStyle.Render(ascii)
+
+	// Apply shine effect if animating
+	renderedLogo := ""
+	if m.isShining {
+		lines := strings.Split(ascii, "\n")
+		var styledLines []string
+		shineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Bold(true)
+		
+		for _, line := range lines {
+			styledLine := ""
+			for i, char := range line {
+				// Create a moving 'glint' roughly 3-5 chars wide
+				if i >= m.animFrame && i < m.animFrame+5 {
+					styledLine += shineStyle.Render(string(char))
+				} else {
+					styledLine += string(char)
+				}
+			}
+			styledLines = append(styledLines, styledLine)
+		}
+		renderedLogo = headerStyle.Render(strings.Join(styledLines, "\n"))
+	} else {
+		renderedLogo = headerStyle.Render(ascii)
+	}
+
+	logo := renderedLogo
 	logoWidth := lipgloss.Width(logo)
 
 	now := time.Now()
