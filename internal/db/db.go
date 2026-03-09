@@ -72,6 +72,7 @@ func (d *DB) Close() error {
 }
 
 func (d *DB) LogMetric(metricType, value, date string) error {
+	metricType = strings.ToLower(metricType)
 	query := `INSERT INTO metrics (metric_type, value, date) VALUES (?, ?, ?)`
 	_, err := d.Conn.Exec(query, metricType, value, date)
 	return err
@@ -130,6 +131,7 @@ func (d *DB) GetMetricValueOnDate(metricType, date string) (string, error) {
 }
 
 func (d *DB) DeleteMetric(metricType, date string) error {
+	metricType = strings.ToLower(metricType)
 	query := `DELETE FROM metrics WHERE metric_type = ? AND date = ?`
 	_, err := d.Conn.Exec(query, metricType, date)
 	return err
@@ -236,43 +238,35 @@ func (d *DB) GetStreak() (int, error) {
 	}
 	defer rows.Close()
 
+	dates := make(map[string]bool)
+	for rows.Next() {
+		var dateStr string
+		if err := rows.Scan(&dateStr); err == nil {
+			dates[dateStr] = true
+		}
+	}
+
 	streak := 0
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	yesterday := today.AddDate(0, 0, -1)
-
+	
+	// Start checking from today
 	checkDate := today
-	first := true
-
-	for rows.Next() {
-		var dateStr string
-		if err := rows.Scan(&dateStr); err != nil {
-			return streak, err
+	
+	// If today isn't logged, check if yesterday was. 
+	// If neither, streak is 0.
+	if !dates[checkDate.Format("2006-01-02")] {
+		checkDate = today.AddDate(0, 0, -1)
+		if !dates[checkDate.Format("2006-01-02")] {
+			return 0, nil
 		}
+	}
 
-		date, err := time.Parse("2006-01-02", dateStr)
-		if err != nil {
-			continue
-		}
-
-		if first {
-			first = false
-			if date.Equal(today) {
-				streak++
-				checkDate = yesterday
-				continue
-			} else if date.Equal(yesterday) {
-				streak++
-				checkDate = yesterday.AddDate(0, 0, -1)
-				continue
-			}
-		}
-
-		if date.Equal(checkDate) {
+	// Count backwards
+	for {
+		if dates[checkDate.Format("2006-01-02")] {
 			streak++
 			checkDate = checkDate.AddDate(0, 0, -1)
-		} else if date.After(checkDate) {
-			continue
 		} else {
 			break
 		}
