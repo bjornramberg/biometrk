@@ -116,6 +116,10 @@ func (d *DB) SeedDummyData() error {
 
 		// Feel: 1-5
 		d.LogMetric("feel", fmt.Sprintf("%d", 1+rand.Intn(5)), date)
+
+		// Note
+		notes := []string{"Feeling great today.", "A bit tired.", "Productive morning.", "Stayed hydrated.", "Long day at work.", ""}
+		d.LogMetric("note", notes[rand.Intn(len(notes))], date)
 	}
 	return nil
 }
@@ -403,7 +407,7 @@ func (d *DB) GetInsights(days int) ([]Insight, error) {
 		return nil, err
 	}
 
-	metrics := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel"}
+	metrics := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel", "note"}
 	labels := map[string]string{
 		"bp":        "Blood Pressure",
 		"alcohol":   "Alcohol Intake",
@@ -490,7 +494,7 @@ func (d *DB) GetLeadLagInsights(days int) ([]Insight, error) {
 		return nil, err
 	}
 
-	metrics := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel"}
+	metrics := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel", "note"}
 	labels := map[string]string{
 		"bp":        "Blood Pressure",
 		"alcohol":   "Alcohol Intake",
@@ -533,7 +537,7 @@ func (d *DB) GetLeadLagInsights(days int) ([]Insight, error) {
 func (d *DB) GetMetricDataInRange(days int) (map[string][]float64, error) {
 	data := make(map[string][]float64)
 	
-	metricsList := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel"}
+	metricsList := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel", "note"}
 	for _, m := range metricsList {
 		data[m] = make([]float64, 0, days)
 	}

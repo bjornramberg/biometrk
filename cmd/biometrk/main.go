@@ -201,6 +201,18 @@ func initialModel(d *db.DB) *model {
 					return err == nil && val >= 1 && val <= 5
 				},
 			},
+			{
+				id:       "note",
+				label:    "Daily Note",
+				group:    "NOTES",
+				tooltip:  "Add a brief observation or context for your day (max 200 chars).",
+				guidance: "Notes help explain unusual metric values (e.g., 'Bad sleep due to heatwave').",
+				source:   "Biometrk Journaling",
+				mType:    typeInput,
+				validate: func(s string) bool {
+					return len(s) <= 200
+				},
+			},
 		},
 		values:            make(map[string]string),
 		currentDate:       today,
@@ -950,7 +962,16 @@ func (m *model) View() string {
 			if val == "true" { 
 				displayVal = "[x]" 
 			} else if val != "" && val != "false" { 
-				displayVal = fmt.Sprintf("[%s]", val) 
+				if metric.id == "note" {
+					// Truncate note for the list view
+					if len(val) > 30 {
+						displayVal = "[" + val[:27] + "...]"
+					} else {
+						displayVal = "[" + val + "]"
+					}
+				} else {
+					displayVal = fmt.Sprintf("[%s]", val) 
+				}
 			}
 			
 			// Dynamic Color
@@ -985,6 +1006,12 @@ func (m *model) View() string {
 		tipContent += divider + "\n\n"
 		tipContent += lipgloss.NewStyle().Bold(true).Render("How to Enter:") + "\n"
 		tipContent += activeMetric.tooltip + "\n\n"
+		
+		if activeMetric.id == "note" && m.values["note"] != "" {
+			tipContent += lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42")).Render("Current Note:") + "\n"
+			tipContent += m.values["note"] + "\n\n"
+		}
+
 		if activeMetric.guidance != "" {
 			tipContent += lipgloss.NewStyle().Bold(true).Render("Health Guidance:") + "\n"
 			tipContent += activeMetric.guidance + "\n\n"
