@@ -429,7 +429,7 @@ func (d *DB) GetInsights(days int) ([]Insight, error) {
 				continue
 			}
 
-			r := calculatePearson(d1, d2)
+			r := calculatePearson(d1, d2, m1, m2)
 			
 			if r > 0.4 || r < -0.4 {
 				text := generateInsightText(labels[m1], labels[m2], r)
@@ -441,19 +441,35 @@ func (d *DB) GetInsights(days int) ([]Insight, error) {
 	return insights, nil
 }
 
-func calculatePearson(x, y []float64) float64 {
-	n := len(x)
-	if n != len(y) || n == 0 {
+func calculatePearson(x, y []float64, id1, id2 string) float64 {
+	// Identify metrics where 0 means "missing data" (numeric) 
+	// vs where 0 is a valid state (boolean/enum)
+	isNumeric := func(id string) bool {
+		return id == "bp" || id == "sleep" || id == "stress" || id == "feel"
+	}
+
+	var cleanX, cleanY []float64
+	for i := 0; i < len(x); i++ {
+		// Skip if numeric data is 0 (missing)
+		if isNumeric(id1) && x[i] == 0 { continue }
+		if isNumeric(id2) && y[i] == 0 { continue }
+		
+		cleanX = append(cleanX, x[i])
+		cleanY = append(cleanY, y[i])
+	}
+
+	n := len(cleanX)
+	if n < 5 { // Require at least 5 shared data points for any correlation
 		return 0
 	}
 
 	var sumX, sumY, sumXY, sumX2, sumY2 float64
 	for i := 0; i < n; i++ {
-		sumX += x[i]
-		sumY += y[i]
-		sumXY += x[i] * y[i]
-		sumX2 += x[i] * x[i]
-		sumY2 += y[i] * y[i]
+		sumX += cleanX[i]
+		sumY += cleanY[i]
+		sumXY += cleanX[i] * cleanY[i]
+		sumX2 += cleanX[i] * cleanX[i]
+		sumY2 += cleanY[i] * cleanY[i]
 	}
 
 	num := float64(n)*sumXY - sumX*sumY
@@ -519,7 +535,7 @@ func (d *DB) GetLeadLagInsights(days int) ([]Insight, error) {
 			yesterdayD1 := d1[:len(d1)-1]
 			todayD2 := d2[1:]
 
-			r := calculatePearson(yesterdayD1, todayD2)
+			r := calculatePearson(yesterdayD1, todayD2, m1, m2)
 
 			if r > 0.4 || r < -0.4 {
 				text := fmt.Sprintf("Yesterday's %s shows a correlation with today's %s.", labels[m1], labels[m2])
