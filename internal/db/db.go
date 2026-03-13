@@ -396,158 +396,143 @@ func (d *DB) ExportMarkdown() (string, error) {
 }
 
 type Insight struct {
-	Text        string
-	Correlation float64
-	IsLagged    bool
+	Text   string
+	Impact string // e.g., "+1.2 points" or "-10 mmHg"
+	Trend  int    // 1 for positive impact, -1 for negative, 0 for neutral
 }
 
-func (d *DB) GetInsights(days int) ([]Insight, error) {
-	data, err := d.GetMetricDataInRange(days)
-	if err != nil {
-		return nil, err
-	}
-
-	metrics := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel", "note"}
-	labels := map[string]string{
-		"bp":        "Blood Pressure",
-		"alcohol":   "Alcohol Intake",
-		"hydration": "Hydration",
-		"sleep":     "Sleep",
-		"training":  "Training",
-		"stress":    "Stress",
-		"feel":      "Overall Feel",
-	}
-
-	var insights []Insight
-
-	for i := 0; i < len(metrics); i++ {
-		for j := i + 1; j < len(metrics); j++ {
-			m1, m2 := metrics[i], metrics[j]
-			d1, d2 := data[m1], data[m2]
-
-			if len(d1) < 3 || len(d2) < 3 {
-				continue
-			}
-
-			r := calculatePearson(d1, d2, m1, m2)
-			
-			if r > 0.4 || r < -0.4 {
-				text := generateInsightText(labels[m1], labels[m2], r)
-				insights = append(insights, Insight{Text: text, Correlation: r})
-			}
-		}
-	}
-
-	return insights, nil
+type causalPair struct {
+	cause  string
+	effect string
+	label  string
+	isLag  bool
 }
 
-func calculatePearson(x, y []float64, id1, id2 string) float64 {
-	// Identify metrics where 0 means "missing data" (numeric) 
-	// vs where 0 is a valid state (boolean/enum)
-	isNumeric := func(id string) bool {
-		return id == "bp" || id == "sleep" || id == "stress" || id == "feel"
-	}
-
-	var cleanX, cleanY []float64
-	for i := 0; i < len(x); i++ {
-		// Skip if numeric data is 0 (missing)
-		if isNumeric(id1) && x[i] == 0 { continue }
-		if isNumeric(id2) && y[i] == 0 { continue }
-		
-		cleanX = append(cleanX, x[i])
-		cleanY = append(cleanY, y[i])
-	}
-
-	n := len(cleanX)
-	if n < 5 { // Require at least 5 shared data points for any correlation
-		return 0
-	}
-
-	var sumX, sumY, sumXY, sumX2, sumY2 float64
-	for i := 0; i < n; i++ {
-		sumX += cleanX[i]
-		sumY += cleanY[i]
-		sumXY += cleanX[i] * cleanY[i]
-		sumX2 += cleanX[i] * cleanX[i]
-		sumY2 += cleanY[i] * cleanY[i]
-	}
-
-	num := float64(n)*sumXY - sumX*sumY
-	den := (float64(n)*sumX2 - sumX*sumX) * (float64(n)*sumY2 - sumY*sumY)
-	if den <= 0 {
-		return 0
-	}
-
-	return num / math.Sqrt(den)
-}
-
-func generateInsightText(l1, l2 string, r float64) string {
-	strength := "a moderate"
-	if r > 0.7 || r < -0.7 {
-		strength = "a strong"
-	}
-
-	direction := "positive"
-	impact := "increase together"
-	if r < 0 {
-		direction = "negative"
-		impact = "move in opposite directions"
-	}
-
-	if (l1 == "Training" || l2 == "Training") && r > 0.4 {
-		return fmt.Sprintf("Training consistently correlates with a better %s.", strings.ReplaceAll(l1+l2, "Training", ""))
-	}
-	if (l1 == "Alcohol Intake" || l2 == "Alcohol Intake") && r < -0.4 {
-		return fmt.Sprintf("Alcohol intake shows %s link to decreased %s.", strength, strings.ReplaceAll(l1+l2, "Alcohol Intake", ""))
-	}
-
-	return fmt.Sprintf("There is %s %s correlation between %s and %s (%s).", strength, direction, l1, l2, impact)
-}
-
-func (d *DB) GetLeadLagInsights(days int) ([]Insight, error) {
+func (d *DB) GetSmartInsights(days int) ([]Insight, error) {
 	data, err := d.GetMetricDataInRange(days + 1)
 	if err != nil {
 		return nil, err
 	}
 
-	metrics := []string{"bp", "alcohol", "hydration", "sleep", "training", "stress", "feel", "note"}
-	labels := map[string]string{
-		"bp":        "Blood Pressure",
-		"alcohol":   "Alcohol Intake",
-		"hydration": "Hydration",
-		"sleep":     "Sleep",
-		"training":  "Training",
-		"stress":    "Stress",
-		"feel":      "Overall Feel",
+	pairs := []causalPair{
+		{cause: "alcohol", effect: "sleep", label: "Alcohol's impact on your Sleep", isLag: false},
+		{cause: "alcohol", effect: "feel", label: "How Alcohol affects your Well-being", isLag: true},
+		{cause: "sleep", effect: "stress", label: "How Sleep affects your Stress levels", isLag: false},
+		{cause: "sleep", effect: "feel", label: "The link between Sleep and Well-being", isLag: false},
+		{cause: "training", effect: "feel", label: "The boost you get from Training", isLag: false},
+		{cause: "stress", effect: "bp", label: "How Stress impacts your Blood Pressure", isLag: false},
+		{cause: "hydration", effect: "feel", label: "The benefit of staying Hydrated", isLag: false},
 	}
 
 	var insights []Insight
 
-	for _, m1 := range metrics {
-		for _, m2 := range metrics {
-			d1 := data[m1]
-			d2 := data[m2]
+	for _, p := range pairs {
+		causeData := data[p.cause]
+		effectData := data[p.effect]
 
-			if len(d1) < 4 || len(d2) < 4 {
-				continue
-			}
+		if len(causeData) < 5 || len(effectData) < 5 {
+			continue
+		}
 
-			yesterdayD1 := d1[:len(d1)-1]
-			todayD2 := d2[1:]
+		var cause, effect []float64
+		if p.isLag {
+			// Yesterday's cause vs Today's effect
+			cause = causeData[:len(causeData)-1]
+			effect = effectData[1:]
+		} else {
+			cause = causeData[1:] // Use the same range as lag for consistency
+			effect = effectData[1:]
+		}
 
-			r := calculatePearson(yesterdayD1, todayD2, m1, m2)
-
-			if r > 0.4 || r < -0.4 {
-				text := fmt.Sprintf("Yesterday's %s shows a correlation with today's %s.", labels[m1], labels[m2])
-				if r > 0.7 {
-					text = fmt.Sprintf("Yesterday's %s strongly impacts how today's %s turns out.", labels[m1], labels[m2])
-				}
-				insights = append(insights, Insight{Text: text, Correlation: r, IsLagged: true})
-			}
+		insight, ok := d.analyzeCausalRelationship(p, cause, effect)
+		if ok {
+			insights = append(insights, insight)
 		}
 	}
 
 	return insights, nil
+}
+
+func (d *DB) analyzeCausalRelationship(p causalPair, cause, effect []float64) (Insight, bool) {
+	// For boolean/toggle causes (Alcohol, Training, Hydration)
+	// We compare the average of the effect when cause is 1 vs when cause is 0
+	var sumOn, sumOff float64
+	var countOn, countOff int
+
+	for i := 0; i < len(cause); i++ {
+		if cause[i] > 0.5 {
+			if effect[i] > 0 {
+				sumOn += effect[i]
+				countOn++
+			}
+		} else {
+			if effect[i] > 0 {
+				sumOff += effect[i]
+				countOff++
+			}
+		}
+	}
+
+	if countOn < 2 || countOff < 2 {
+		return Insight{}, false
+	}
+
+	avgOn := sumOn / float64(countOn)
+	avgOff := sumOff / float64(countOff)
+	diff := avgOn - avgOff
+
+	// Significant threshold check
+	if math.Abs(diff) < 0.2 {
+		return Insight{}, false
+	}
+
+	// Generate Text
+	text := ""
+	trend := 0
+	impact := ""
+
+	switch p.cause {
+	case "alcohol":
+		if diff < 0 {
+			text = fmt.Sprintf("Your %s is consistently lower after consuming alcohol.", p.effect)
+			trend = -1
+		}
+	case "training":
+		if diff > 0 {
+			text = fmt.Sprintf("Training days correlate with a boost in your %s.", p.effect)
+			trend = 1
+		}
+	case "sleep":
+		if diff > 0 {
+			text = fmt.Sprintf("Better sleep leads to a noticeable improvement in %s.", p.effect)
+			trend = 1
+		} else {
+			text = fmt.Sprintf("Lack of sleep seems to increase your %s.", p.effect)
+			trend = -1
+		}
+	}
+
+	if text == "" {
+		// Generic fallback
+		if diff > 0 {
+			text = fmt.Sprintf("There is a positive link between %s and %s.", p.cause, p.effect)
+			trend = 1
+		} else {
+			text = fmt.Sprintf("%s seems to have a negative impact on %s.", p.cause, p.effect)
+			trend = -1
+		}
+	}
+
+	// Format impact
+	unit := "points"
+	if p.effect == "bp" {
+		unit = "mmHg"
+	} else if p.effect == "sleep" {
+		unit = "hours"
+	}
+	impact = fmt.Sprintf("%+.1f %s", diff, unit)
+
+	return Insight{Text: text, Impact: impact, Trend: trend}, true
 }
 
 func (d *DB) GetMetricDataInRange(days int) (map[string][]float64, error) {

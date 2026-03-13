@@ -98,7 +98,6 @@ type model struct {
 	analyticsData     map[string][]float64
 	analyticsInsights []db.Insight
 	analyticsCursor   int // 0 to (interval-1)
-	laggedInsights    []db.Insight
 	width             int
 	height            int
 	viewport          viewport.Model
@@ -233,18 +232,11 @@ func (m *model) loadAnalytics() {
 		m.analyticsData = data
 	}
 
-	insights, err := m.db.GetInsights(m.analyticsInterval)
+	insights, err := m.db.GetSmartInsights(m.analyticsInterval)
 	if err != nil {
 		m.err = err
 	} else {
 		m.analyticsInsights = insights
-	}
-
-	lags, err := m.db.GetLeadLagInsights(m.analyticsInterval)
-	if err != nil {
-		m.err = err
-	} else {
-		m.laggedInsights = lags
 	}
 }
 
@@ -925,14 +917,26 @@ func (m *model) View() string {
 
 	case modeInsights:
 		insightContent := fmt.Sprintf("Lifestyle Insights - Last %d Days\n\n", m.analyticsInterval)
-		insightContent += "Direct Correlations:\n"
+		
 		if len(m.analyticsInsights) > 0 {
-			for _, insight := range m.analyticsInsights { insightContent += fmt.Sprintf(" • %s\n", insight.Text) }
-		} else { insightContent += " No strong correlations found yet.\n" }
-		insightContent += "\nLead/Lag (Yesterday vs Today):\n"
-		if len(m.laggedInsights) > 0 {
-			for _, insight := range m.laggedInsights { insightContent += fmt.Sprintf(" • %s\n", insight.Text) }
-		} else { insightContent += " No significant patterns detected.\n" }
+			for _, insight := range m.analyticsInsights {
+				color := "252" // Neutral
+				if insight.Trend > 0 {
+					color = "42" // Green (Positive Improvement)
+				} else if insight.Trend < 0 {
+					color = "196" // Red (Negative Impact)
+				}
+				
+				contentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+				impactStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(color))
+				
+				insightContent += fmt.Sprintf(" • %s (%s)\n", 
+					contentStyle.Render(insight.Text), 
+					impactStyle.Render(insight.Impact))
+			}
+		} else {
+			insightContent += " No significant patterns detected yet. Keep logging to discover how your habits impact your wellbeing.\n"
+		}
 		
 		m.viewport.SetContent(insightContent)
 		content = m.viewport.View()
